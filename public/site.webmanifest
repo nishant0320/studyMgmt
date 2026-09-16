@@ -1,0 +1,10 @@
+{
+  "name": "StudyTrack — Personal Study Workspace",
+  "short_name": "StudyTrack",
+  "description": "Your personal workspace for focus, planning and reflection.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#111214",
+  "theme_color": "#111214",
+  "icons": [{ "src": "/favicon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }]
+}
