@@ -16,6 +16,7 @@ import { useAmbientSound } from "../hooks/useAmbientSound";
 
 const nav = [
   { to: "/", label: "Dashboard", icon: LayoutDashboard },
+  { to: "/plan", label: "Daily plan", icon: Target },
   { to: "/timer", label: "Timer", icon: Timer },
   { to: "/tasks", label: "Tasks", icon: CheckCircle2 },
   { to: "/calendar", label: "Calendar", icon: CalendarDays },
@@ -111,15 +112,13 @@ export function Layout() {
       { id: "today-calendar", label: "Open today's calendar", detail: "Plan today", icon: CalendarDays, action: () => navigate("/calendar") },
       { id: "today-journal", label: "Write today's journal", detail: "Reflect", icon: BookOpen, action: () => navigate("/journal") },
     ];
-    const taskCommands = state.tasks.filter((t) => t.status !== "done").slice(0, 10).map((task) => ({
+    const taskCommands = state.tasks.filter((t) => t.status !== "done").map((task) => ({
       id: `task-${task.id}`,
       label: task.title,
       detail: `Focus task · ${task.category} · ${task.priority}`,
       icon: Target,
       action: () => {
-        activeTimer.setSelectedTask(task.id);
-        activeTimer.setSelectedCategory(task.category);
-        navigate("/timer");
+        navigate("/timer", {state:{focusTaskId:task.id}});
       },
     }));
     return [...quickCommands, ...routeCommands, ...taskCommands];
@@ -186,7 +185,7 @@ export function Layout() {
         <div className="brand">
           <div className="brand-mark"><BookOpen size={18} /></div>
           <div>
-            <strong>StudyTrack</strong>
+            <strong>TrackMe</strong>
             <span>Make time for what matters</span>
           </div>
         </div>
@@ -195,7 +194,7 @@ export function Layout() {
             const Icon = item.icon;
             return (
               <div key={item.to}>
-              {[0, 4, 10].includes(index) && <div className="nav-section-label">{index === 0 ? "Workspace" : index === 4 ? "Insights & reflection" : "Preferences"}</div>}
+              {[0, 5, 11].includes(index) && <div className="nav-section-label">{index === 0 ? "Workspace" : index === 5 ? "Insights & reflection" : "Preferences"}</div>}
               <NavLink
                 key={item.to}
                 title={item.label}
@@ -241,7 +240,7 @@ export function Layout() {
             <span className="topbar-date">{now.toLocaleDateString([], { weekday: "short", month: "short", day: "numeric" })}</span>
           </div>
         </div>
-        {storageError && <div className="storage-warning" role="alert"><ShieldAlert size={18} /><span>Your browser could not save changes. Export a backup before closing this tab.</span><button onClick={() => navigate("/settings")}>Open backups</button></div>}
+        {(storageError || activeTimer.timerStorageError) && <div className="storage-warning" role="alert"><ShieldAlert size={18} /><span>Your browser could not save changes. Export a backup before closing this tab.</span><button onClick={() => navigate("/settings")}>Open backups</button></div>}
         <div key={routeKey} className={`route-frame route-${routeKey}`}>
           <Suspense fallback={<div className="route-loading" role="status"><span />Loading your study space…</div>}><Outlet /></Suspense>
         </div>

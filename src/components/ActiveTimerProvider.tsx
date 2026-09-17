@@ -1,3 +1,4 @@
+import { sessionMinutes } from "../utils/pomodoro";
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { useAppStore } from "../store/AppStore";
 import { SessionType, StudySession } from "../types";
@@ -7,6 +8,7 @@ export type TimerMode = "sprint" | "focus" | "deepFocus" | "custom";
 
 type ActiveTimerState = {
   version: 1;
+  scratchNotes: string;
   type: SessionType;
   mode: TimerMode;
   customMinutes: number;
@@ -20,10 +22,11 @@ type ActiveTimerState = {
 };
 
 type ActiveTimerContextValue = ActiveTimerState & {
+  timerStorageError: boolean;
+  setScratchNotes: (notes: string) => void;
   setType: (type: SessionType) => void;
   setMode: (mode: TimerMode) => void;
   setCustomMinutes: (minutes: number | ((value: number) => number)) => void;
-  setPlannedMinutes: (minutes: number) => void;
   setSelectedTask: (taskId: string) => void;
   setSelectedCategory: (category: string) => void;
   start: () => void;
@@ -39,6 +42,7 @@ const ActiveTimerContext = createContext<ActiveTimerContextValue | null>(null);
 function initialTimer(focusDuration: number): ActiveTimerState {
   const fallback: ActiveTimerState = {
     version: 1,
+    scratchNotes: "",
     type: "focus",
     mode: "focus",
     customMinutes: 25,
@@ -53,10 +57,14 @@ function initialTimer(focusDuration: number): ActiveTimerState {
   try {
     const stored = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? "null") as Partial<ActiveTimerState> | null;
     if (!stored || stored.version !== 1) return fallback;
-    const restored = { ...fallback, ...stored };
+    const restored = { ...fallback, ...stored, scratchNotes: typeof stored.scratchNotes === "string" ? stored.scratchNotes : "" };
     if (!["focus", "break", "longBreak"].includes(restored.type) || !["sprint", "focus", "deepFocus", "custom"].includes(restored.mode)
       || !Number.isFinite(restored.plannedMinutes) || restored.plannedMinutes < 1 || restored.plannedMinutes > 180
       || !Number.isFinite(restored.remaining) || restored.remaining < 0 || restored.remaining > restored.plannedMinutes * 60
+      || typeof restored.selectedTask !== "string" || typeof restored.selectedCategory !== "string"
+      || !Number.isFinite(restored.customMinutes) || restored.customMinutes < 1 || restored.customMinutes > 180
+      || (restored.startedAt !== null && (typeof restored.startedAt !== "string" || !Number.isFinite(Date.parse(restored.startedAt))))
+      || (restored.running && !restored.startedAt)
       || typeof restored.running !== "boolean" || (restored.running && (!restored.endsAt || !Number.isFinite(Date.parse(restored.endsAt))))) return fallback;
     if (restored.running && restored.endsAt) {
       restored.remaining = Math.max(0, Math.ceil((new Date(restored.endsAt).getTime() - Date.now()) / 1000));
@@ -70,8 +78,10 @@ function initialTimer(focusDuration: number): ActiveTimerState {
 export function ActiveTimerProvider({ children }: { children: React.ReactNode }) {
   const { state, dispatch } = useAppStore();
   const [timer, setTimer] = useState<ActiveTimerState>(() => initialTimer(state.settings.focusDuration));
+  const [timerStorageError,setTimerStorageError] = useState(false);
   const timerRef = useRef(timer);
   const finishingRef = useRef(false);
+  const persistedTimer = useRef("");
 
   const commit = useCallback((next: ActiveTimerState | ((current: ActiveTimerState) => ActiveTimerState)) => {
     setTimer((current) => {
@@ -83,24 +93,15 @@ export function ActiveTimerProvider({ children }: { children: React.ReactNode })
 
   useEffect(() => {
     timerRef.current = timer;
-    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(timer)); } catch { /* Workspace storage warning handles unavailable storage. */ }
+    try { const serialized = JSON.stringify({ ...timer, remaining: timer.running ? timer.plannedMinutes * 60 : timer.remaining }); if (serialized !== persistedTimer.current) {localStorage.setItem(STORAGE_KEY, serialized); persistedTimer.current = serialized;} setTimerStorageError(false); } catch { setTimerStorageError(true); }
   }, [timer]);
 
   useEffect(() => {
     if (timer.running || timer.startedAt) return;
-    const plannedMinutes = timer.type === "break"
-      ? state.settings.shortBreakDuration
-      : timer.type === "longBreak"
-        ? state.settings.longBreakDuration
-        : timer.mode === "sprint"
-          ? 15
-          : timer.mode === "deepFocus"
-            ? 50
-            : timer.mode === "custom"
-              ? timer.customMinutes
-              : state.settings.focusDuration;
+    const task = state.tasks.find(task=>task.id===timer.selectedTask);
+    const plannedMinutes = sessionMinutes(timer.type,timer.mode,timer.customMinutes,state.settings,task);
     if (plannedMinutes !== timer.plannedMinutes) commit({ ...timer, plannedMinutes, remaining: plannedMinutes * 60 });
-  }, [commit, state.settings.focusDuration, state.settings.longBreakDuration, state.settings.shortBreakDuration, timer]);
+  }, [commit, state.settings, state.tasks, timer]);
 
   const playChime = useCallback(() => {
     if (!state.settings.soundEnabled) return;
@@ -124,7 +125,7 @@ export function ActiveTimerProvider({ children }: { children: React.ReactNode })
 
   const notify = useCallback((completed: boolean, current: ActiveTimerState) => {
     if (!state.settings.notificationsEnabled || !("Notification" in window)) return;
-    const show = () => new Notification(completed ? "StudyTrack session complete" : "StudyTrack session stopped", {
+    const show = () => new Notification(completed ? "TrackMe session complete" : "TrackMe session stopped", {
       body: `${labelFor[current.type]} logged for ${completed ? current.plannedMinutes : Math.max(1, Math.round((current.plannedMinutes * 60 - current.remaining) / 60))} minutes.`,
     });
     if (Notification.permission === "granted") show();
@@ -141,17 +142,18 @@ export function ActiveTimerProvider({ children }: { children: React.ReactNode })
     const task = state.tasks.find((item) => item.id === current.selectedTask);
     const actualDuration = completed ? current.plannedMinutes : Math.round(elapsed / 60);
     const session: StudySession = {
+      source: "timer",
       id: `session-${current.type}-${current.startedAt ?? new Date().toISOString()}`,
       taskId: current.selectedTask || undefined,
       startTime: current.startedAt ?? new Date().toISOString(),
-      endTime: new Date().toISOString(),
+      endTime: completed && current.endsAt ? current.endsAt : new Date().toISOString(),
       plannedDuration: current.plannedMinutes,
       actualDuration,
       type: current.type,
       completed,
       interrupted: !completed,
       category: current.selectedCategory || task?.category || "General Practice",
-      notes: completed ? "" : "Stopped before completion.",
+      notes: [current.scratchNotes.trim(), completed ? "" : "Stopped before completion."].filter(Boolean).join("\n\n"),
     };
     dispatch({ type: "add-session", session });
 
@@ -161,17 +163,18 @@ export function ActiveTimerProvider({ children }: { children: React.ReactNode })
     const nextType: SessionType = current.type === "focus" && completed
       ? (completedFocusCount % Math.max(1, state.settings.sessionsBeforeLongBreak) === 0 ? "longBreak" : "break")
       : "focus";
-    const nextMinutes = nextType === "focus"
-      ? state.settings.focusDuration
-      : nextType === "break"
-        ? state.settings.shortBreakDuration
-        : state.settings.longBreakDuration;
-    const autoStart = completed && state.settings.autoStartNextSession;
+    const taskFinished = task && (task.status === 'done' || (current.type === 'focus' && completed && task.actualPomodoros + 1 >= task.estimatedPomodoros));
+    const nextTask = taskFinished ? undefined : task;
+    const nextMinutes = sessionMinutes(nextType, 'focus', current.customMinutes, state.settings, nextTask);
+    // After the task's last block, leave the break ready and let the user choose the next step.
+    const autoStart = completed && state.settings.autoStartNextSession && !taskFinished;
     const nextStartedAt = autoStart ? new Date().toISOString() : null;
     const nextState: ActiveTimerState = {
       ...current,
+      scratchNotes: "",
       type: nextType,
-      mode: nextType === "focus" ? current.mode : "focus",
+      selectedTask: taskFinished ? "" : current.selectedTask,
+      mode: "focus",
       plannedMinutes: nextMinutes,
       remaining: nextMinutes * 60,
       running: autoStart,
@@ -204,7 +207,7 @@ export function ActiveTimerProvider({ children }: { children: React.ReactNode })
   }, [commit, finishSession, timer.endsAt, timer.running]);
 
   useEffect(() => {
-    const originalTitle = "StudyTrack";
+    const originalTitle = "TrackMe";
     if (timer.running) {
       const minutes = String(Math.floor(timer.remaining / 60)).padStart(2, "0");
       const seconds = String(timer.remaining % 60).padStart(2, "0");
@@ -215,6 +218,7 @@ export function ActiveTimerProvider({ children }: { children: React.ReactNode })
     return () => { document.title = originalTitle; };
   }, [timer.remaining, timer.running, timer.type]);
 
+  const setScratchNotes = useCallback((scratchNotes: string) => commit(current => ({...current, scratchNotes})), [commit]);
   const setType = useCallback((type: SessionType) => commit((current) => current.running ? current : { ...current, type, startedAt: null, endsAt: null }), [commit]);
   const setMode = useCallback((mode: TimerMode) => commit((current) => current.running ? current : { ...current, mode, startedAt: null, endsAt: null }), [commit]);
   const setCustomMinutes = useCallback((value: number | ((current: number) => number)) => commit((current) => {
@@ -222,23 +226,27 @@ export function ActiveTimerProvider({ children }: { children: React.ReactNode })
     const customMinutes = Math.max(1, Math.min(180, typeof value === "function" ? value(current.customMinutes) : value));
     return { ...current, customMinutes, startedAt: null, endsAt: null };
   }), [commit]);
-  const setPlannedMinutes = useCallback((plannedMinutes: number) => commit((current) => {
-    if (current.running || current.startedAt || current.plannedMinutes === plannedMinutes) return current;
-    return { ...current, plannedMinutes, remaining: plannedMinutes * 60 };
-  }), [commit]);
-  const setSelectedTask = useCallback((selectedTask: string) => commit((current) => current.startedAt ? current : ({ ...current, selectedTask })), [commit]);
+  const setSelectedTask = useCallback((selectedTask: string) => commit((current) => {
+    if (current.startedAt) return current;
+    const task = state.tasks.find(task=>task.id===selectedTask);
+    const plannedMinutes = sessionMinutes('focus', 'focus', current.customMinutes, state.settings, task);
+    return { ...current, selectedTask: task?.id ?? '', selectedCategory: task?.category ?? current.selectedCategory, type: 'focus', mode: 'focus', plannedMinutes, remaining: plannedMinutes * 60 };
+  }), [commit, state.tasks, state.settings]);
   const setSelectedCategory = useCallback((selectedCategory: string) => commit((current) => current.startedAt ? current : ({ ...current, selectedCategory })), [commit]);
   const start = useCallback(() => commit((current) => {
     if (current.running) return current;
-    const remaining = current.remaining > 0 ? current.remaining : current.plannedMinutes * 60;
+    const task = state.tasks.find(task=>task.id===current.selectedTask);
+    const plannedMinutes = current.startedAt ? current.plannedMinutes : sessionMinutes(current.type,current.mode,current.customMinutes,state.settings,task);
+    const remaining = current.startedAt && current.remaining > 0 ? current.remaining : plannedMinutes * 60;
     return {
       ...current,
+      plannedMinutes,
       remaining,
       running: true,
       startedAt: current.startedAt ?? new Date().toISOString(),
       endsAt: new Date(Date.now() + remaining * 1000).toISOString(),
     };
-  }), [commit]);
+  }), [commit, state.settings, state.tasks]);
   const pause = useCallback(() => commit((current) => {
     if (!current.running) return current;
     const remaining = current.endsAt ? Math.max(0, Math.ceil((new Date(current.endsAt).getTime() - Date.now()) / 1000)) : current.remaining;
@@ -254,17 +262,18 @@ export function ActiveTimerProvider({ children }: { children: React.ReactNode })
 
   const value = useMemo<ActiveTimerContextValue>(() => ({
     ...timer,
+    timerStorageError,
+    setScratchNotes,
     setType,
     setMode,
     setCustomMinutes,
-    setPlannedMinutes,
     setSelectedTask,
     setSelectedCategory,
     start,
     pause,
     reset,
     finishSession,
-  }), [finishSession, pause, reset, setCustomMinutes, setMode, setPlannedMinutes, setSelectedCategory, setSelectedTask, setType, start, timer]);
+  }), [timerStorageError, setScratchNotes, finishSession, pause, reset, setCustomMinutes, setMode, setSelectedCategory, setSelectedTask, setType, start, timer]);
 
   return <ActiveTimerContext.Provider value={value}>{children}</ActiveTimerContext.Provider>;
 }

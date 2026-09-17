@@ -44,10 +44,10 @@ export function StatsPage() {
       const y = 218 + Math.floor(index / 2) * 104;
       return `<rect x="${x - 18}" y="${y - 54}" width="390" height="82" rx="14" fill="rgb(32,34,38)" stroke="rgb(44,47,53)"/><text x="${x}" y="${y - 18}" fill="rgb(156,167,197)" font-size="16" font-weight="700">${escapeXml(String(label))}</text><text x="${x}" y="${y + 18}" fill="rgb(244,240,255)" font-size="22" font-weight="600">${escapeXml(String(value))}</text>`;
     }).join("");
-    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="680"><defs><linearGradient id="g" x1="0" x2="1"><stop stop-color="rgb(124,92,252)"/><stop offset="1" stop-color="rgb(240,160,80)"/></linearGradient></defs><rect width="100%" height="100%" rx="24" fill="rgb(17,18,20)"/><rect x="34" y="34" width="932" height="612" rx="22" fill="rgb(25,27,30)" stroke="rgb(50,57,92)"/><text x="80" y="96" fill="rgb(167,201,147)" font-size="22" font-weight="800" letter-spacing="3">STUDYTRACK SNAPSHOT</text><text x="80" y="146" fill="rgb(244,240,255)" font-size="42" font-weight="900">${escapeXml(new Date().toLocaleDateString())}</text>${rows}</svg>`;
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="680"><defs><linearGradient id="g" x1="0" x2="1"><stop stop-color="rgb(124,92,252)"/><stop offset="1" stop-color="rgb(240,160,80)"/></linearGradient></defs><rect width="100%" height="100%" rx="24" fill="rgb(17,18,20)"/><rect x="34" y="34" width="932" height="612" rx="22" fill="rgb(25,27,30)" stroke="rgb(50,57,92)"/><text x="80" y="96" fill="rgb(167,201,147)" font-size="22" font-weight="800" letter-spacing="3">TRACKME SNAPSHOT</text><text x="80" y="146" fill="rgb(244,240,255)" font-size="42" font-weight="900">${escapeXml(new Date().toLocaleDateString())}</text>${rows}</svg>`;
     const url = URL.createObjectURL(new Blob([svg], { type: "image/svg+xml" }));
     const link = document.createElement("a");
-    link.href = url; link.download = "studytrack-summary.svg"; link.click();
+    link.href = url; link.download = "trackme-summary.svg"; link.click();
     URL.revokeObjectURL(url);
     showToast("Snapshot exported", "success");
   };
@@ -123,7 +123,7 @@ export function StatsPage() {
 
       <section className="snapshot">
         <div className="snapshot-title">
-          <span>StudyTrack summary</span>
+          <span>TrackMe summary</span>
           <strong>{new Date().toLocaleDateString()}</strong>
         </div>
         <div className="stat-grid">

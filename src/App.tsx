@@ -2,6 +2,7 @@ import { Navigate, Route, Routes } from "react-router-dom";
 import { lazy } from "react";
 import { Layout } from "./components/Layout";
 import { DashboardPage } from "./pages/DashboardPage";
+const PlanPage = lazy(() => import("./pages/PlanPage").then(module => ({ default: module.PlanPage })));
 const TimerPage = lazy(() => import("./pages/TimerPage").then(module => ({ default: module.TimerPage })));
 const TaskBoardPage = lazy(() => import("./pages/TaskBoardPage").then(module => ({ default: module.TaskBoardPage })));
 const CalendarPage = lazy(() => import("./pages/CalendarPage").then(module => ({ default: module.CalendarPage })));
@@ -18,6 +19,7 @@ export default function App() {
     <Routes>
       <Route element={<Layout />}>
         <Route index element={<DashboardPage />} />
+        <Route path="/plan" element={<PlanPage />} />
         <Route path="/timer" element={<TimerPage />} />
         <Route path="/tasks" element={<TaskBoardPage />} />
         <Route path="/calendar" element={<CalendarPage />} />

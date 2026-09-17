@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 const { chromium } = await import(process.env.PLAYWRIGHT_MODULE || 'playwright-core');
-const base = process.env.STUDYTRACK_URL || 'http://127.0.0.1:5174';
+const base = process.env.TRACKME_URL || process.env.STUDYTRACK_URL || 'http://127.0.0.1:5174';
 const output = process.env.STUDYTRACK_SCREENSHOTS || '/tmp/studytrack-verification';
 fs.mkdirSync(output, { recursive: true });
 const browser = await chromium.launch({ headless: true, executablePath: process.env.CHROME_PATH || '/usr/bin/google-chrome', args: ['--no-sandbox'] });
@@ -138,7 +138,7 @@ try {
   const before=(await data('tasks')).length;
   await page.locator('input[type=file]').setInputFiles({name:'invalid.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify({sessions:[{}],tasks:[],journalEntries:[],badges:[],events:[],settings:{}}))});
   await page.waitForTimeout(250);assert.equal((await data('tasks')).length,before);
-  await go('timer');await page.getByRole('button',{name:'Focus',exact:true}).click();assert.match(await page.locator('.timer-clock-display').textContent(),/52:00/);
+  await go('timer');await page.locator('.task-attach-trigger').click();await page.getByRole('dialog').getByRole('button',{name:/Free study block/}).click();assert.match(await page.locator('.timer-clock-display').textContent(),/52:00/);
  });
  await check('coach settings validate and persist',async()=>{
   await go('coach');await page.getByRole('button',{name:'Tune',exact:true}).click();
@@ -161,13 +161,13 @@ try {
   if(mode==='empty')await page.evaluate(()=>{localStorage.removeItem('studytrack.workspace.v1');for(const key of ['sessions','tasks','journal','events'])localStorage.setItem('studytrack.'+key,'[]');localStorage.setItem('studytrack.badges',JSON.stringify(JSON.parse(localStorage.getItem('studytrack.badges')).map(b=>({...b,dateEarned:null}))));});
   for(const width of [1440,390]){
    await page.setViewportSize({width,height:1000});
-   for(const route of ['','tasks','timer','calendar','history','analytics','coach','journal','badges','stats','settings']){
+   for(const route of ['','plan','tasks','timer','calendar','history','analytics','coach','journal','badges','stats','settings']){
     await go(route);
     assert.equal(await page.locator('h1').count(),1,`${route} has one page heading`);
     assert.equal(await page.locator('.main-panel').evaluate(el=>el.scrollWidth>el.clientWidth),false,`${route} overflows at ${width}`);
     await page.screenshot({path:`${output}/${mode}-${route||'dashboard'}-${width}.png`});
    }
-   console.log('PASS',`${mode}: all 11 routes at ${width}px`);
+   console.log('PASS',`${mode}: all 12 routes at ${width}px`);
   }
  }
  await check('mobile drawer, collapse preference and navigation work',async()=>{

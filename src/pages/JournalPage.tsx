@@ -124,7 +124,7 @@ export function JournalPage() {
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
-    link.download = `studytrack-journal-${selectedDate}.${format}`;
+    link.download = `trackme-journal-${selectedDate}.${format}`;
     link.click();
     URL.revokeObjectURL(url);
     setShowExport(false);

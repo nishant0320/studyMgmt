@@ -13,6 +13,7 @@ export type BadgeMetric =
   | "comebackSessions";
 
 export type StudySession = {
+  source?: "timer" | "manual";
   id: string;
   taskId?: string;
   startTime: string;
@@ -33,6 +34,10 @@ export type Subtask = {
 };
 
 export type Task = {
+  pomodoroMinutes?: number;
+  completedByPomodoros?: boolean;
+  plannedDate?: string;
+  planOrder?: number;
   id: string;
   title: string;
   description: string;
@@ -118,6 +123,7 @@ export type Settings = {
 };
 
 export type AppState = {
+  customCategories?: string[];
   sessions: StudySession[];
   tasks: Task[];
   journalEntries: JournalEntry[];

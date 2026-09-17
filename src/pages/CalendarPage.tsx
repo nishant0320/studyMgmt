@@ -1,3 +1,4 @@
+import { NewTaskModal, TaskDetailModal } from "../components/TaskModals";
 import { Select } from "../components/Select";
 import { confirmAction } from "../utils/confirm";
 import { useEffect, useMemo, useState } from "react";
@@ -23,7 +24,7 @@ import {
   CheckCircle2
 } from "lucide-react";
 import { useAppStore } from "../store/AppStore";
-import { CalendarEvent, Priority, Task, TaskStatus } from "../types";
+import { CalendarEvent, Priority, Task } from "../types";
 import { currentStreak, dateKey } from "../utils/stats";
 
 const monthNames = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
@@ -48,24 +49,19 @@ export function CalendarPage() {
   const [eventStartTime, setEventStartTime] = useState("");
   const [eventEndTime, setEventEndTime] = useState("");
   const [eventNotes, setEventNotes] = useState("");
-  const [taskTitle, setTaskTitle] = useState("");
-  const [taskPriority, setTaskPriority] = useState<Priority>("medium");
-  const [taskCategory, setTaskCategory] = useState("General");
-  const [taskDate, setTaskDate] = useState(dateKey(new Date()));
   const [calendarModal, setCalendarModal] = useState<null | "tasks" | "events" | "sessions">(null);
   const [navKey, setNavKey] = useState(0);
 
   useEffect(() => {
-    if (!calendarModal && !showModal && !showTaskModal) return;
+    if (!calendarModal && !showModal) return;
     const close = (event: KeyboardEvent) => {
       if (event.key !== "Escape") return;
       if (showModal) closeEventModal();
-      else if (showTaskModal) closeTaskModal();
       else setCalendarModal(null);
     };
     window.addEventListener("keydown", close);
     return () => window.removeEventListener("keydown", close);
-  }, [calendarModal, showModal, showTaskModal]);
+  }, [calendarModal, showModal]);
 
   const year = currentDate.getFullYear();
   const month = currentDate.getMonth();
@@ -96,7 +92,7 @@ export function CalendarPage() {
 
   const getSessionsForDate = (date: Date) => state.sessions.filter((session) => new Date(session.startTime).toDateString() === date.toDateString());
   const getEventsForDate = (date: Date) => state.events.filter((event) => new Date(`${event.date}T00:00:00`).toDateString() === date.toDateString());
-  const getTasksForDate = (date: Date) => state.tasks.filter((task) => new Date(`${task.dueDate}T00:00:00`).toDateString() === date.toDateString());
+  const getTasksForDate = (date: Date) => state.tasks.filter((task) => (task.plannedDate || task.dueDate) === dateKey(date));
   const getStudyTimeForDate = (date: Date) => getSessionsForDate(date).reduce((sum, session) => sum + (session.type === "focus" ? session.actualDuration : 0), 0);
   const isGoalMet = (minutes: number) => minutes >= dailyGoal;
   const getHeatmapIntensity = (minutes: number) => {
@@ -208,57 +204,9 @@ export function CalendarPage() {
   const openTaskModal = (task?: Task) => {
     setCalendarModal(null);
     setEditingTaskId(task?.id ?? null);
-    setTaskTitle(task?.title ?? "");
-    setTaskPriority(task?.priority ?? "medium");
-    setTaskCategory(task?.category ?? "General");
-    setTaskDate(task?.dueDate ?? dateKey(selectedDate));
-    setShowTaskModal(true);
+    setShowTaskModal(!task);
   };
-
-  const closeTaskModal = () => {
-    setShowTaskModal(false);
-    setEditingTaskId(null);
-    setTaskTitle("");
-    setTaskPriority("medium");
-    setTaskCategory("General");
-    setTaskDate(dateKey(selectedDate));
-  };
-
-  const saveTask = () => {
-    if (!taskTitle.trim()) return;
-    const existing = editingTaskId ? state.tasks.find((task) => task.id === editingTaskId) : null;
-    if (existing) {
-      dispatch({
-        type: "update-task",
-        task: {
-          ...existing,
-          title: taskTitle.trim(),
-          priority: taskPriority,
-          dueDate: taskDate,
-          category: taskCategory.trim() || "General",
-        },
-      });
-      closeTaskModal();
-      return;
-    }
-    dispatch({
-      type: "add-task",
-      task: {
-        id: crypto.randomUUID(),
-        title: taskTitle.trim(),
-        description: "",
-        status: "todo" as TaskStatus,
-        priority: taskPriority,
-        dueDate: taskDate,
-        createdAt: new Date().toISOString(),
-        estimatedPomodoros: 2,
-        actualPomodoros: 0,
-        category: taskCategory.trim() || "General",
-        subtasks: [],
-      },
-    });
-    closeTaskModal();
-  };
+  const editingTask = state.tasks.find(task => task.id === editingTaskId);
 
   return (
     <div className="calendar-page calendar-command page-transition">
@@ -325,7 +273,13 @@ export function CalendarPage() {
                   }
                 }}
                 onDragOver={(event) => event.preventDefault()}
-                onDrop={(event) => dispatch({ type: "reschedule-task", id: event.dataTransfer.getData("task-id"), dueDate: dateKey(day.date) })}
+                onDrop={(event) => {
+                  event.preventDefault();
+                  const id = event.dataTransfer.getData("task-id");
+                  if (!state.tasks.some(task => task.id === id)) return;
+                  dispatch({ type: "schedule-tasks", ids: [id], date: dateKey(day.date) });
+                  setSelectedDate(day.date);
+                }}
               >
                 <div className="day-header">
                   {today && <span className="today-indicator" />}
@@ -350,7 +304,7 @@ export function CalendarPage() {
           <article>
             <Target size={16} />
             <strong>{selectedTasks.length}</strong>
-            <span>tasks due</span>
+            <span>tasks &amp; deadlines</span>
           </article>
           <article>
             <CalendarPlus size={16} />
@@ -380,10 +334,10 @@ export function CalendarPage() {
         </div>
 
         <SidebarSection title="Tasks" action={<div className="section-actions">{selectedTasks.length > 2 && <button className="add-btn muted-btn" onClick={() => setCalendarModal("tasks")} aria-label="View all tasks for selected day" title="View all tasks for selected day">{selectedTasks.length}</button>}<button className="add-btn" onClick={() => openTaskModal()} aria-label="Add task for selected day" title="Add task"><Plus size={15} /></button></div>}>
-          {selectedTasks.length === 0 ? <div className="empty-state compact">No tasks due</div> : selectedTasks.slice(0, 2).map((task) => (
+          {selectedTasks.length === 0 ? <div className="empty-state compact">No tasks planned or due</div> : selectedTasks.slice(0, 2).map((task) => (
             <div key={task.id} className="event-item task-event" draggable onDragStart={(event) => event.dataTransfer.setData("task-id", task.id)}>
               <div className="event-color" style={{ background: priorityColor[task.priority] }} />
-              <div className="event-details"><div className="event-title">{task.title}</div><div className="event-meta"><span>{task.category}</span><span>{task.priority}</span></div></div>
+              <div className="event-details"><div className="event-title">{task.title}</div><div className="event-meta"><span>{task.category}</span><span>{task.priority}</span><span>{task.plannedDate ? "Planned" : "Deadline · unscheduled"}</span></div></div>
               <div className="item-actions">
                 <button className="ghost icon-only" onClick={() => openTaskModal(task)} title="Edit task" aria-label={`Edit task ${task.title}`}><Pencil size={14} /></button>
                 <button className="ghost icon-only danger-text" onClick={async () => { if (await confirmAction(`Delete “${task.title}”?`)) dispatch({ type: "delete-task", id: task.id }); }} title="Delete task" aria-label={`Delete task ${task.title}`}><Trash2 size={14} /></button>
@@ -425,7 +379,7 @@ export function CalendarPage() {
             <div className="modal-title"><h2 id="calendar-list-title">{calendarModal === "tasks" ? "Tasks" : calendarModal === "events" ? "Events" : "Sessions"} on {dateKey(selectedDate)}</h2><button className="ghost icon-only" onClick={() => setCalendarModal(null)} aria-label="Close list modal" title="Close list modal"><X size={18} /></button></div>
             <div className="event-list">
               {calendarModal === "tasks" && selectedTasks.map((task) => (
-                <div key={task.id} className="event-item"><div className="event-color" style={{ background: priorityColor[task.priority] }} /><div className="event-details"><div className="event-title">{task.title}</div><div className="event-meta"><span>{task.category}</span><span>{task.priority}</span><span>{task.estimatedPomodoros} pomodoros</span></div></div><div className="item-actions"><button className="ghost icon-only" onClick={() => openTaskModal(task)} title="Edit task" aria-label={`Edit task ${task.title}`}><Pencil size={14} /></button><button className="ghost icon-only danger-text" onClick={async () => { if (await confirmAction(`Delete “${task.title}”?`)) dispatch({ type: "delete-task", id: task.id }); }} title="Delete task" aria-label={`Delete task ${task.title}`}><Trash2 size={14} /></button></div></div>
+                <div key={task.id} className="event-item"><div className="event-color" style={{ background: priorityColor[task.priority] }} /><div className="event-details"><div className="event-title">{task.title}</div><div className="event-meta"><span>{task.category}</span><span>{task.priority}</span><span>{task.plannedDate ? "Planned" : "Deadline · unscheduled"}</span><span>{task.estimatedPomodoros} pomodoros</span></div></div><div className="item-actions"><button className="ghost icon-only" onClick={() => openTaskModal(task)} title="Edit task" aria-label={`Edit task ${task.title}`}><Pencil size={14} /></button><button className="ghost icon-only danger-text" onClick={async () => { if (await confirmAction(`Delete “${task.title}”?`)) dispatch({ type: "delete-task", id: task.id }); }} title="Delete task" aria-label={`Delete task ${task.title}`}><Trash2 size={14} /></button></div></div>
               ))}
               {calendarModal === "events" && selectedEvents.map((event) => (
                 <div key={event.id} className="event-item"><div className="event-color" style={{ background: event.color }} /><div className="event-details"><div className="event-title">{event.title}</div><div className="event-meta"><span>{event.category}</span><span>{formatEventTime(event)}</span></div>{event.notes && <small className="event-note-preview">{event.notes}</small>}</div><div className="item-actions"><button className="ghost icon-only" onClick={() => openEventModal(event)} title="Edit event" aria-label={`Edit event ${event.title}`}><Pencil size={14} /></button><button className="ghost icon-only danger-text" onClick={async () => { if (await confirmAction(`Delete “${event.title}”?`)) dispatch({ type: "delete-event", id: event.id }); }} title="Delete event" aria-label={`Delete event ${event.title}`}><Trash2 size={14} /></button></div></div>
@@ -455,20 +409,9 @@ export function CalendarPage() {
         </div></Portal>
       )}
 
-      {showTaskModal && (
-        <Portal><div className="modal">
-          <div className="modal-panel event-modal glass-panel" role="dialog" aria-modal="true" aria-labelledby="calendar-task-title">
-            <h2 id="calendar-task-title">{editingTaskId ? "Edit Task" : "Add Task"}</h2>
-            <label>Title<input autoFocus value={taskTitle} onChange={(event) => setTaskTitle(event.target.value)} placeholder="Task title" /></label>
-            <label>Due date<input type="date" value={taskDate} onChange={(event) => setTaskDate(event.target.value)} /></label>
-            <div className="two-col">
-              <label>Priority<Select aria-label="Priority" value={taskPriority} onChange={(event) => setTaskPriority(event.target.value as Priority)}><option value="high">High</option><option value="medium">Medium</option><option value="low">Low</option></Select></label>
-              <label>Category<input value={taskCategory} onChange={(event) => setTaskCategory(event.target.value)} placeholder="Category" /></label>
-            </div>
-            <div className="modal-actions"><button onClick={closeTaskModal}>Cancel</button><button className="primary" onClick={saveTask} disabled={!taskTitle.trim() || !taskDate}><Plus size={16} /> Save Task</button></div>
-          </div>
-        </div></Portal>
-      )}
+      {showTaskModal && <NewTaskModal status="todo" plannedDate={dateKey(selectedDate)} onClose={() => setShowTaskModal(false)} />}
+      {editingTask && <TaskDetailModal key={editingTask.id} task={editingTask} onClose={() => setEditingTaskId(null)} />}
+
     </div>
   );
 }

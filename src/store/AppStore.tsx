@@ -1,10 +1,14 @@
-import React, { createContext, useContext, useLayoutEffect, useMemo, useReducer, useState } from "react";
+import { creditPomodoro, removePomodoroCredit } from "../utils/pomodoro";
+import React, { createContext, useContext, useLayoutEffect, useMemo, useReducer, useRef, useState } from "react";
 import { AppState, Badge, CalendarEvent, JournalEntry, Settings, StudySession, Subtask, Task } from "../types";
 import { defaultSettings, makeEmptyState, makeInitialState, starterBadges } from "./demoData";
 import { isValidBackup } from "../utils/backup";
 import { computeEarnedBadges } from "../utils/stats";
 
-type Action =
+export type Action =
+  | { type: "schedule-tasks"; ids: string[]; date?: string }
+  | { type: "reorder-plan"; date: string; ids: string[] }
+  | { type: "update-categories"; categories: string[] }
   | { type: "add-session"; session: StudySession }
   | { type: "update-session-notes"; id: string; notes: string }
   | { type: "delete-session"; id: string }
@@ -61,14 +65,15 @@ const migrateSettings = (settings: Partial<Settings>): Settings => {
   return merged;
 };
 
-const hydrate = (): AppState => {
+export const hydrate = (): AppState => {
   const snapshot = read<unknown>("studytrack.workspace.v1", null);
-  if (isValidBackup(snapshot)) return { ...snapshot, settings: migrateSettings(snapshot.settings), badges: migrateBadges(snapshot.badges) };
+  if (isValidBackup(snapshot)) return { ...snapshot, customCategories: snapshot.customCategories ?? read<string[]>("studytrack.customTimerCategories", []), settings: migrateSettings(snapshot.settings), badges: migrateBadges(snapshot.badges) };
   const seeded = read("studytrack.initialized", false);
   if (!seeded) {
     return makeEmptyState();
   }
-  return {
+  const legacy = {
+    customCategories: read<string[]>("studytrack.customTimerCategories", []),
     sessions: read(STORAGE_KEYS.sessions, []),
     tasks: read(STORAGE_KEYS.tasks, []),
     journalEntries: read(STORAGE_KEYS.journalEntries, []),
@@ -76,6 +81,8 @@ const hydrate = (): AppState => {
     settings: migrateSettings(read(STORAGE_KEYS.settings, {})),
     events: read(STORAGE_KEYS.events, []),
   };
+  if (!isValidBackup(legacy)) throw new Error("Stored workspace could not be read. Download your data from the recovery screen before restoring a backup.");
+  return legacy;
 };
 
 const normalizeBadges = (state: AppState): AppState => ({
@@ -85,13 +92,24 @@ const normalizeBadges = (state: AppState): AppState => ({
 
 export const reducer = (state: AppState, action: Action): AppState => {
   switch (action.type) {
+    case "update-categories":
+      return { ...state, customCategories: Array.from(new Set(action.categories.map(c => c.trim()).filter(Boolean))) };
+    case "schedule-tasks": {
+      const existing = state.tasks.filter(task => task.plannedDate === action.date && !action.ids.includes(task.id));
+      const order = Math.max(-1, ...existing.map(task => task.planOrder ?? 0)) + 1;
+      return { ...state, tasks: state.tasks.map(task => action.ids.includes(task.id) ? { ...task, plannedDate: action.date, planOrder: action.date ? order + action.ids.indexOf(task.id) : undefined } : task) };
+    }
+    case "reorder-plan": {
+      const ids = Array.from(new Set(action.ids)).filter(id => state.tasks.some(t => t.id === id && t.plannedDate === action.date));
+      return { ...state, tasks: state.tasks.map(task => ids.includes(task.id) ? { ...task, planOrder: ids.indexOf(task.id) } : task) };
+    }
     case "add-session": {
       if (state.sessions.some(session => session.id === action.session.id)) return state;
       const sessions = [action.session, ...state.sessions];
       const tasks = action.session.taskId
         ? state.tasks.map((task) =>
             task.id === action.session.taskId
-              ? { ...task, actualPomodoros: task.actualPomodoros + (action.session.type === "focus" && action.session.completed && !action.session.interrupted ? 1 : 0) }
+              ? (action.session.type === "focus" && action.session.completed && !action.session.interrupted ? creditPomodoro(task, action.session.endTime) : task)
               : task,
           )
         : state.tasks;
@@ -102,16 +120,24 @@ export const reducer = (state: AppState, action: Action): AppState => {
     case "delete-session": {
       const removed = state.sessions.find(session => session.id === action.id);
       const tasks = removed?.type === "focus" && removed.completed && !removed.interrupted
-        ? state.tasks.map(task => task.id === removed.taskId ? { ...task, actualPomodoros: Math.max(0, task.actualPomodoros - 1) } : task)
+        ? state.tasks.map(task => task.id === removed.taskId ? removePomodoroCredit(task) : task)
         : state.tasks;
       return normalizeBadges({ ...state, tasks, sessions: state.sessions.filter((session) => session.id !== action.id) });
     }
     case "add-task":
-      return normalizeBadges({ ...state, tasks: [{ ...action.task, completedAt: action.task.status === "done" ? action.task.completedAt || new Date().toISOString() : undefined }, ...state.tasks] });
+      return normalizeBadges({ ...state, tasks: [{ ...action.task, completedByPomodoros: action.task.status === "done" ? action.task.completedByPomodoros : undefined, completedAt: action.task.status === "done" ? action.task.completedAt || new Date().toISOString() : undefined }, ...state.tasks] });
     case "update-task":
       return normalizeBadges({
         ...state,
-        tasks: state.tasks.map((task) => (task.id === action.task.id ? { ...action.task, completedAt: action.task.status === "done" ? action.task.completedAt || new Date().toISOString() : undefined } : task)),
+        tasks: state.tasks.map((task) => {
+          if (task.id !== action.task.id) return task;
+          // A timer may finish while its task editor is open. Never replace live credit with the older draft.
+          const finishedWhileEditing = task.completedByPomodoros && task.actualPomodoros > action.task.actualPomodoros;
+          const status = finishedWhileEditing ? task.status : action.task.status;
+          return { ...action.task, actualPomodoros: task.actualPomodoros, status,
+            completedByPomodoros: status === 'done' ? task.completedByPomodoros : undefined,
+            completedAt: status === 'done' ? task.completedAt || action.task.completedAt || new Date().toISOString() : undefined };
+        }),
       });
     case "delete-task":
       return normalizeBadges({ ...state, tasks: state.tasks.filter((task) => task.id !== action.id) });
@@ -122,7 +148,7 @@ export const reducer = (state: AppState, action: Action): AppState => {
         ...state,
         tasks: state.tasks.map((task) =>
           action.ids.includes(task.id)
-            ? { ...task, status: action.status, completedAt: action.status === "done" ? new Date().toISOString() : undefined }
+            ? { ...task, status: action.status, completedByPomodoros: undefined, completedAt: action.status === "done" ? new Date().toISOString() : undefined }
             : task,
         ),
       });
@@ -131,7 +157,7 @@ export const reducer = (state: AppState, action: Action): AppState => {
         ...state,
         tasks: state.tasks.map((task) =>
           task.id === action.id
-            ? { ...task, status: action.status, completedAt: action.status === "done" ? new Date().toISOString() : undefined }
+            ? { ...task, status: action.status, completedByPomodoros: undefined, completedAt: action.status === "done" ? new Date().toISOString() : undefined }
             : task,
         ),
       });
@@ -175,7 +201,7 @@ export const reducer = (state: AppState, action: Action): AppState => {
     case "clear-data":
       return normalizeBadges({ sessions: [], tasks: [], journalEntries: [], badges: starterBadges, settings: { ...defaultSettings, demoDataEnabled: false }, events: [] });
     case "clear-sessions":
-      return normalizeBadges({ ...state, sessions: [], tasks: state.tasks.map(task => ({ ...task, actualPomodoros: 0 })) });
+      return normalizeBadges({ ...state, sessions: [], tasks: state.tasks.map(task => removePomodoroCredit(task, 0)) });
     case "clear-tasks":
       return normalizeBadges({ ...state, tasks: [] });
     case "import-data":
@@ -197,16 +223,18 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [state, dispatch] = useReducer(reducer, undefined, () => normalizeBadges(hydrate()));
 
   const [storageError, setStorageError] = useState(false);
+  const saved = useRef<Record<string, string>>({});
   useLayoutEffect(() => {
     try {
-    localStorage.setItem("studytrack.workspace.v1", JSON.stringify(state));
-    localStorage.setItem(STORAGE_KEYS.sessions, JSON.stringify(state.sessions));
-    localStorage.setItem(STORAGE_KEYS.tasks, JSON.stringify(state.tasks));
-    localStorage.setItem(STORAGE_KEYS.journalEntries, JSON.stringify(state.journalEntries));
-    localStorage.setItem(STORAGE_KEYS.badges, JSON.stringify(state.badges));
-    localStorage.setItem(STORAGE_KEYS.settings, JSON.stringify(state.settings));
-    localStorage.setItem(STORAGE_KEYS.events, JSON.stringify(state.events));
-    localStorage.setItem("studytrack.initialized", "true");
+    const entries = {
+      "studytrack.workspace.v1": JSON.stringify(state),
+      ...Object.fromEntries(Object.entries(STORAGE_KEYS).map(([section, key]) => [key, JSON.stringify(state[section as keyof typeof STORAGE_KEYS])])),
+      "studytrack.customTimerCategories": JSON.stringify(state.customCategories ?? []),
+      "studytrack.initialized": "true",
+    };
+    for (const [key, value] of Object.entries(entries)) {
+      if (saved.current[key] !== value) { localStorage.setItem(key, value); saved.current[key] = value; }
+    }
     setStorageError(false);
     } catch { setStorageError(true); }
   }, [state]);

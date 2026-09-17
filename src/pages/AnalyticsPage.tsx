@@ -59,7 +59,7 @@ export function AnalyticsPage() {
     const url = URL.createObjectURL(new Blob([rows.join("\n")], { type: "text/csv" }));
     const link = document.createElement("a");
     link.href = url;
-    link.download = `studytrack-analytics-${range}.csv`;
+    link.download = `trackme-analytics-${range}.csv`;
     link.click();
     URL.revokeObjectURL(url);
     showToast(`${range.toUpperCase()} analytics exported`, "success");

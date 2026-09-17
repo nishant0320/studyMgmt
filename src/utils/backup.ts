@@ -15,6 +15,7 @@ const uniqueIds = (value: unknown) => Array.isArray(value) && value.every(item =
 /** Reject malformed records before they can replace a working workspace. */
 export function isValidBackup(value: unknown): value is AppState {
   if (!record(value) || !record(value.settings)) return false;
+  if (value.customCategories !== undefined && (!Array.isArray(value.customCategories) || !value.customCategories.every(text))) return false;
   const settings = value.settings;
   for (const [key, fallback] of Object.entries(defaultSettings)) {
     if (settings[key] !== undefined && (typeof settings[key] !== typeof fallback || (typeof fallback === "number" && !number(settings[key])))) return false;
@@ -30,11 +31,11 @@ export function isValidBackup(value: unknown): value is AppState {
   if (settings.pomodoroPreset !== undefined && !choice(settings.pomodoroPreset, ["classic", "52-17", "90-20", "custom"])) return false;
   if (settings.accentColor !== undefined && (!text(settings.accentColor) || !/^(#[\da-f]{6}|rgb\(\s*\d{1,3}\s*,\s*\d{1,3}\s*,\s*\d{1,3}\s*\))$/i.test(settings.accentColor))) return false;
   return uniqueIds(value.tasks) && list(value.tasks, t =>
-    text(t.title) && text(t.description) && text(t.category) && choice(t.status, ["todo", "in-progress", "done"]) && choice(t.priority, ["low", "medium", "high"]) &&
+    optional(t.pomodoroMinutes, value => number(value) && Number.isInteger(value) && value >= 1 && value <= 180) && optional(t.completedByPomodoros, value => typeof value === "boolean") && optional(t.plannedDate, date) && optional(t.planOrder, number) && text(t.title) && text(t.description) && text(t.category) && choice(t.status, ["todo", "in-progress", "done"]) && choice(t.priority, ["low", "medium", "high"]) &&
     (t.dueDate === "" || date(t.dueDate)) && timestamp(t.createdAt) && optional(t.completedAt, timestamp) && number(t.estimatedPomodoros) && t.estimatedPomodoros >= 1 && number(t.actualPomodoros) &&
     uniqueIds(t.subtasks) && list(t.subtasks, sub => text(sub.title) && typeof sub.done === "boolean")) &&
     uniqueIds(value.sessions) && list(value.sessions, s =>
-      timestamp(s.startTime) && timestamp(s.endTime) && number(s.plannedDuration) && s.plannedDuration > 0 && number(s.actualDuration) &&
+      optional(s.source, source => choice(source, ["timer", "manual"])) && timestamp(s.startTime) && timestamp(s.endTime) && Date.parse(s.endTime as string) >= Date.parse(s.startTime as string) && number(s.plannedDuration) && s.plannedDuration > 0 && number(s.actualDuration) &&
       choice(s.type, ["focus", "break", "longBreak"]) && typeof s.completed === "boolean" && typeof s.interrupted === "boolean" && text(s.category) && optional(s.taskId, text) && optional(s.notes, text)) &&
     list(value.journalEntries, j => date(j.date) && [j.summary, j.whatWentWell, j.whatDidnt, j.tomorrowPlan].every(text) &&
       number(j.moodRating) && j.moodRating >= 1 && j.moodRating <= 5 && number(j.focusRating) && j.focusRating >= 1 && j.focusRating <= 5 &&

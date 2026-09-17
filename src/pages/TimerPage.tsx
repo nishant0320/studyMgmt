@@ -1,3 +1,7 @@
+import { StudyHeatmap } from "../components/StudyHeatmap";
+import { taskPomodoroMinutes } from "../utils/pomodoro";
+import { showToast } from "../utils/toast";
+import { FocusRoom } from "../components/FocusRoom";
 import { useEffect, useMemo, useState } from "react";
 import { Portal } from "../components/Portal";
 import type React from "react";
@@ -8,8 +12,8 @@ import { CountUp } from "../components/CountUp";
 import { ProgressRing } from "../components/ProgressRing";
 import { formatTimerClock, TimerMode, useActiveTimer } from "../components/ActiveTimerProvider";
 import { useAppStore } from "../store/AppStore";
-import { SessionType, StudySession } from "../types";
-import { currentStreak, dateKey, dayMinutesMap, todayStats } from "../utils/stats";
+import { SessionType } from "../types";
+import { currentStreak, todayStats } from "../utils/stats";
 
 const labelFor: Record<SessionType, string> = { focus: "Focus", break: "Short Break", longBreak: "Long Break" };
 
@@ -23,22 +27,21 @@ const timerModes: Record<TimerMode, { label: string; minutes: number; detail: st
 const defaultCategories = ["DSA Algorithm", "System Design", "General Practice", "Project Work", "Revision", "Mock Interview"];
 
 export function TimerPage() {
-  const { state } = useAppStore();
+  const { state, dispatch } = useAppStore();
+  const [focusRoom, setFocusRoom] = useState(false);
   const location = useLocation();
   const navigate = useNavigate();
   const {
     type, mode, customMinutes, plannedMinutes: activePlannedMinutes, remaining, running, startedAt,
     selectedTask, selectedCategory,
-    setType, setMode, setCustomMinutes, setPlannedMinutes, setSelectedTask, setSelectedCategory,
+    setType, setMode, setCustomMinutes, setSelectedTask, setSelectedCategory,
     start, pause, reset, finishSession,
   } = useActiveTimer();
 
   const [taskModalOpen, setTaskModalOpen] = useState(false);
   const [taskQuery, setTaskQuery] = useState("");
-  const [customCategories, setCustomCategories] = useState<string[]>(() => {
-    try { return JSON.parse(localStorage.getItem("studytrack.customTimerCategories") ?? "[]") as string[]; }
-    catch { return []; }
-  });
+  const customCategories = state.customCategories ?? [];
+  const setCustomCategories = (categories: string[]) => dispatch({type:'update-categories',categories});
   const [newCategory, setNewCategory] = useState("");
   const today = todayStats(state);
   const categories = useMemo(
@@ -48,7 +51,7 @@ export function TimerPage() {
   const selectedTaskData = state.tasks.find((t) => t.id === selectedTask);
   const taskMatches = state.tasks.filter((t) => t.status !== "done" && `${t.title} ${t.category} ${t.priority}`.toLowerCase().includes(taskQuery.toLowerCase()));
 
-  useEffect(() => { localStorage.setItem("studytrack.customTimerCategories", JSON.stringify(customCategories)); }, [customCategories]);
+
 
   useEffect(() => {
     if (!taskModalOpen) return;
@@ -57,50 +60,43 @@ export function TimerPage() {
     return () => window.removeEventListener("keydown", close);
   }, [taskModalOpen]);
 
-  const plannedMinutes = useMemo(() => {
-    if (type === "break") return state.settings.shortBreakDuration;
-    if (type === "longBreak") return state.settings.longBreakDuration;
-    if (mode === "sprint") return timerModes.sprint.minutes;
-    if (mode === "deepFocus") return timerModes.deepFocus.minutes;
-    if (mode === "custom") return Math.max(1, customMinutes);
-    return state.settings.focusDuration;
-  }, [customMinutes, mode, state.settings, state.sessions, type]);
-
-  useEffect(() => { setPlannedMinutes(plannedMinutes); }, [plannedMinutes, setPlannedMinutes]);
-
   useEffect(() => {
     const taskId = (location.state as { focusTaskId?: string } | null)?.focusTaskId;
     const task = state.tasks.find((t) => t.id === taskId);
-    if (!task || running) return;
-    setSelectedTask(task.id);
-    setSelectedCategory(task.category);
+    if (!task) return;
+    if (startedAt && selectedTask !== task.id) {
+      showToast('Finish or reset your current block before switching tasks.', 'info');
+    } else if (!startedAt) {
+      setType('focus');
+      setSelectedTask(task.id);
+      setSelectedCategory(task.category);
+    }
     navigate(location.pathname, { replace: true, state: null });
-  }, [location.pathname, location.state, navigate, running, setSelectedCategory, setSelectedTask, state.tasks]);
+  }, [location.pathname, location.state, navigate, startedAt, selectedTask, setType, setSelectedCategory, setSelectedTask, state.tasks]);
 
   const minutesText = formatTimerClock(remaining);
-  const displayedPlannedMinutes = running || activePlannedMinutes !== plannedMinutes ? activePlannedMinutes : plannedMinutes;
+  const displayedPlannedMinutes = activePlannedMinutes;
   const progress = 1 - remaining / Math.max(1, displayedPlannedMinutes * 60);
   const clampedProgress = Math.max(0, Math.min(1, progress));
 
   const addCategory = () => {
     if (!newCategory.trim()) return;
     const category = newCategory.trim();
-    setCustomCategories((items) => Array.from(new Set([...items, category])));
+    setCustomCategories(Array.from(new Set([...customCategories, category])));
     setSelectedCategory(category);
     setNewCategory("");
   };
 
-  const heat = yearHeatmap(state.sessions);
-  const bestSession = state.sessions.filter((s) => s.type === "focus").sort((a, b) => b.actualDuration - a.actualDuration)[0];
 
   return (
     <div className="timer-page page-transition">
+      {focusRoom && <FocusRoom onClose={()=>setFocusRoom(false)}/>}
       <PageHeader
         eyebrow="Workspace"
         title="Focus timer"
         description="Give one thing your full attention. The rest can wait."
         action={
-          <div className="timer-header-cluster">
+          <div className="timer-header-cluster"><button onClick={()=>setFocusRoom(true)}><Target size={16}/> Focus mode</button>
             <span><Flame size={14} /><b>{currentStreak(state)}</b><small> streak</small></span>
             <span><CheckCircle2 size={14} /><b>{today.sessionsToday}</b><small> sessions</small></span>
             <span><Clock3 size={14} /><b><CountUp value={today.minutesToday} /></b><small> min today</small></span>
@@ -162,9 +158,9 @@ export function TimerPage() {
         {/* Setup Panel */}
         <aside className="panel timer-setup">
           <h2>Plan this block</h2>
-          <div className="mode-grid">
+          {selectedTaskData ? <div className="task-timer-plan"><span className="overview-eyebrow">TASK POMODORO PLAN</span><strong>{taskPomodoroMinutes(selectedTaskData,state.settings.focusDuration)}<small> min per block</small></strong><p>{selectedTaskData.actualPomodoros} of {selectedTaskData.estimatedPomodoros} Pomodoros completed</p><div className="bar"><span style={{width:`${Math.min(100,selectedTaskData.actualPomodoros/selectedTaskData.estimatedPomodoros*100)}%`}}/></div><small>The task completes automatically after its final block.</small></div> : <><div className="mode-grid">
             {(Object.keys(timerModes) as TimerMode[]).map((item) => (
-              <button key={item} className={`mode-card glass-card ${mode === item ? "selected" : ""}`} disabled={running || type !== "focus"} onClick={() => setMode(item)} >
+              <button key={item} className={`mode-card glass-card ${mode === item ? "selected" : ""}`} disabled={Boolean(startedAt) || type !== "focus"} onClick={() => setMode(item)} >
                 <span className="mono">{timerModes[item].label}</span>
                 <span style={{ fontSize: 13, color: "var(--text-muted)" }}>{item === "focus" ? `${state.settings.focusDuration} min` : `${item === "custom" ? customMinutes : timerModes[item].minutes} min`}</span>
                 <small>{timerModes[item].detail}</small>
@@ -181,6 +177,7 @@ export function TimerPage() {
               </div>
             </div>
           )}
+          </>}
           <div className="setup-group">
             <label>Attach task</label>
             <button className="task-attach-trigger" disabled={Boolean(startedAt)} onClick={() => setTaskModalOpen(true)}>
@@ -206,7 +203,7 @@ export function TimerPage() {
             <div><Bell size={14} /> Notifications {state.settings.notificationsEnabled ? "on" : "off"}</div>
             <div><Volume2 size={14} /> Chime {state.settings.soundEnabled ? "on" : "off"}</div>
           </div>
-          <p className="callout">Your default duration follows Settings. Choose a shorter sprint or a longer block whenever you need it.</p>
+          <p className="callout">{selectedTaskData ? "This task sets your focus duration. Break lengths still follow Settings. Finish or reset a started block before changing tasks." : "Your default duration follows Settings. Attach a task to use its own Pomodoro duration."}</p>
         </aside>
       </section>
 
@@ -227,7 +224,7 @@ export function TimerPage() {
               {taskMatches.map((task) => (
                 <button key={task.id} className={`task-pick-row ${selectedTask === task.id ? "selected" : ""}`} onClick={() => { setSelectedTask(task.id); setSelectedCategory(task.category); setTaskModalOpen(false); }}>
                   <Target size={17} />
-                  <div><strong>{task.title}</strong><span>{task.category} · {task.priority}{task.dueDate ? ` · due ${task.dueDate}` : ""}</span></div>
+                  <div><strong>{task.title}</strong><span>{task.category} · {task.estimatedPomodoros} × {taskPomodoroMinutes(task,state.settings.focusDuration)} min{task.dueDate ? ` · due ${task.dueDate}` : ""}</span></div>
                 </button>
               ))}
             </div>
@@ -235,56 +232,8 @@ export function TimerPage() {
         </div></Portal>
       )}
 
-      {/* Year Heatmap */}
-      <section className="section-band">
-        <h2>Your year in focus <span>Every session adds up</span></h2>
-        <div className="heatmap-shell">
-          <div className="month-labels">{heat.months.map((m) => <span key={m.label} style={{ gridColumn: `${m.column + 1} / span 4` }}>{m.label}</span>)}</div>
-          <div className="heatmap-with-days">
-            <div className="day-labels"><span>Mon</span><span>Wed</span><span>Fri</span></div>
-            <div className="heatmap">
-              {heat.cells.map((cell) => (
-                <span
-                  key={cell.fullDate}
-                  data-tooltip={`${cell.fullDate} · ${cell.minutes}m`}
-                  className={`heatmap-cell heat-${Math.min(4, Math.ceil(cell.minutes / 30))}`}
-                  style={{ gridColumn: cell.week + 1, gridRow: cell.day + 1 }}
-                />
-              ))}
-            </div>
-          </div>
-          <div className="heatmap-footer">
-            <div className="heat-legend"><span>Less</span><i /><i /><i /><i /><span>More</span></div>
-            <div>
-              <span>Best session</span>
-              <strong>{bestSession ? `${bestSession.actualDuration} min` : "No sessions yet"}</strong>
-            </div>
-            <p>{bestSession ? `${new Date(bestSession.startTime).toLocaleDateString()} · ${bestSession.category} · planned ${bestSession.plannedDuration}m` : "Complete a focus block and your strongest session will appear here."}</p>
-          </div>
-        </div>
-      </section>
+      <StudyHeatmap sessions={state.sessions} dailyGoal={state.settings.dailyGoalMinutes}/>
+
     </div>
   );
-}
-
-function yearHeatmap(sessions: StudySession[]) {
-  const map = dayMinutesMap(sessions);
-  const end = new Date();
-  const start = new Date(end);
-  start.setDate(end.getDate() - 364);
-  const first = new Date(start);
-  first.setDate(start.getDate() - start.getDay());
-  const cells = [];
-  const months: { label: string; column: number }[] = [];
-  let lastMonth = "";
-  for (let i = 0; i < 371; i += 1) {
-    const current = new Date(first);
-    current.setDate(first.getDate() + i);
-    const fullDate = dateKey(current);
-    const week = Math.floor(i / 7);
-    const month = current.toLocaleString(undefined, { month: "short" });
-    if (current.getDate() <= 7 && month !== lastMonth) { months.push({ label: month, column: week }); lastMonth = month; }
-    cells.push({ fullDate, week, day: current.getDay(), minutes: map[fullDate] ?? 0 });
-  }
-  return { cells, months };
 }

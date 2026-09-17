@@ -258,8 +258,9 @@ export function computeEarnedBadges(state: AppState): Badge[] {
   return state.badges.map((badge) => (badgeMetricValue(state, badge.criteria.metric) >= badge.criteria.threshold && !badge.dateEarned ? { ...badge, dateEarned: now } : badge));
 }
 
-export function exportCsv(sessions: StudySession[]) {
-  const header = "date,start,end,type,category,planned,actual,completed,interrupted,notes";
+export function exportCsv(sessions: StudySession[], tasks: Task[] = []) {
+  const taskTitles = new Map(tasks.map(task => [task.id, task.title]));
+  const header = "date,start,end,type,category,planned,actual,completed,interrupted,source,notes,task";
   const rows = sessions.map((session) =>
     [
       dateKey(session.startTime),
@@ -271,8 +272,10 @@ export function exportCsv(sessions: StudySession[]) {
       session.actualDuration,
       session.completed,
       session.interrupted,
-      `"${(session.notes ?? "").replace(/"/g, '""')}"`,
-    ].join(","),
+      session.source ?? "timer",
+      session.notes ?? "",
+      taskTitles.get(session.taskId ?? "") ?? "",
+    ].map(value => `"${String(value).replace(/"/g, '""')}"`).join(","),
   );
   return [header, ...rows].join("\n");
 }

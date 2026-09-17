@@ -3,14 +3,15 @@ import { AlertTriangle, Download, RefreshCw } from 'lucide-react';
 export class ErrorBoundary extends Component<{children: ReactNode}, {failed: boolean}> {
   state = { failed: false };
   static getDerivedStateFromError() { return { failed: true }; }
-  componentDidCatch(error: Error, info: ErrorInfo) { console.error('StudyTrack could not render', error, info.componentStack); }
+  componentDidCatch(error: Error, info: ErrorInfo) { console.error('TrackMe could not render', error, info.componentStack); }
   downloadRecovery = () => {
     const saved: Record<string, unknown> = {};
-    for (const [field, key] of Object.entries({sessions:'sessions',tasks:'tasks',journalEntries:'journal',badges:'badges',settings:'settings',events:'events'})) {
+    for (const [field, key] of Object.entries({sessions:'sessions',tasks:'tasks',journalEntries:'journal',badges:'badges',settings:'settings',events:'events',customCategories:'customTimerCategories'})) {
       try { saved[field] = JSON.parse(localStorage.getItem(`studytrack.${key}`) || 'null'); } catch { saved[field] = null; }
     }
+    try { const snapshot = JSON.parse(localStorage.getItem("studytrack.workspace.v1") || "null"); if (snapshot) saved["workspaceSnapshot"] = snapshot; saved["recoveryPoints"] = JSON.parse(localStorage.getItem("studytrack.checkpoints.v1") || "[]"); } catch {}
     const url = URL.createObjectURL(new Blob([JSON.stringify(saved, null, 2)], { type: 'application/json' }));
-    const link = document.createElement('a'); link.href = url; link.download = 'studytrack-recovery.json'; link.click(); URL.revokeObjectURL(url);
+    const link = document.createElement('a'); link.href = url; link.download = 'trackme-recovery.json'; link.click(); URL.revokeObjectURL(url);
   };
   render() {
     if (!this.state.failed) return this.props.children;

@@ -80,7 +80,7 @@ export function CoachPage() {
 
   const copyReport = async () => {
     const report = [
-      `StudyTrack adversarial report (${new Date().toLocaleDateString()})`,
+      `TrackMe adversarial report (${new Date().toLocaleDateString()})`,
       `Today: ${formatTime(dashboard.todayMinutes)} / ${formatTime(dashboard.plannedMinutes)} (${dashboard.planPercent}%)`,
       `Study pace: ${Math.round(dashboard.temporalVelocity * 100)}%`,
       `Weekly progress: ${dashboard.weeklyPercent}%`,

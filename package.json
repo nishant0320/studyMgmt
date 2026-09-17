@@ -5,7 +5,12 @@
     "build": "tsc -b && vite build",
     "preview": "vite preview --host 0.0.0.0",
     "test": "TZ=Asia/Kolkata node tests/run.mjs",
-    "test:browser": "node tests/browser.mjs"
+    "test:browser": "node tests/browser.mjs",
+    "test:workflows": "node tests/final-browser.mjs",
+    "test:pomodoro": "node tests/pomodoro-browser.mjs",
+    "test:task-days": "node tests/task-days-browser.mjs",
+    "test:calendar-tasks": "node tests/calendar-tasks-browser.mjs",
+    "test:history": "node tests/history-browser.mjs"
   },
   "dependencies": {
     "lucide-react": "^0.468.0",
@@ -23,8 +28,8 @@
     "typescript": "^5.5.4",
     "vite": "^8.2.2"
   },
-  "name": "studytrack",
-  "version": "1.0.0",
+  "name": "trackme",
+  "version": "1.1.0",
   "private": true,
   "engines": {
     "node": ">=22.12.0"

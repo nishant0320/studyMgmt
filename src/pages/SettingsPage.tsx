@@ -1,3 +1,5 @@
+import { RecoveryPoints } from "../components/RecoveryPoints";
+import { saveCheckpoint, downloadBackup } from "../utils/checkpoints";
 import { Select } from "../components/Select";
 import { confirmAction } from "../utils/confirm";
 import { ChangeEvent, useEffect, useState } from "react";
@@ -27,6 +29,8 @@ import { isValidBackup } from "../utils/backup";
 import { useActiveTimer } from "../components/ActiveTimerProvider";
 import { showToast } from "../utils/toast";
 
+const recoveryConfirmation = {note: "A local recovery point preserves the current workspace before this change."};
+
 const swatches = [{ name: "Sage", color: "#a7c993" }, { name: "Blue", color: "#91b2d6" }, { name: "Lavender", color: "#b5a2cc" }, { name: "Sand", color: "#d7b07e" }, { name: "Rose", color: "#dc9494" }];
 
 function resolveCssColor(token: string) {
@@ -52,6 +56,11 @@ const POMODORO_PRESETS = [
 export function SettingsPage() {
   const { state, dispatch } = useAppStore();
   const settings = state.settings;
+  const [checkpointVersion, setCheckpointVersion] = useState(0);
+  const preserve = (reason: string) => {
+    try {saveCheckpoint(state,reason);setCheckpointVersion(version=>version+1);return true;}
+    catch {showToast('Could not save a recovery point. Export a backup and free browser storage before replacing data.', 'warning');return false;}
+  };
   const activeTimer = useActiveTimer();
 
   const updateNumber = (key: keyof typeof settings, value: string) => {
@@ -74,11 +83,7 @@ export function SettingsPage() {
   const pct = (bytes: number) => `${Math.max(1, Math.round((bytes / totalBytes) * 100))}%`;
 
   const exportJson = () => {
-    const blob = new Blob([JSON.stringify(state, null, 2)], { type: "application/json" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url; link.download = "studytrack-backup.json"; link.click();
-    URL.revokeObjectURL(url);
+    downloadBackup(state);
     showToast("Data exported", "success");
   };
 
@@ -87,12 +92,13 @@ export function SettingsPage() {
     if (!file) return;
     file.text().then(async (text) => {
       const parsed = JSON.parse(text) as unknown;
-      if (!isValidBackup(parsed)) throw new Error("Invalid StudyTrack backup structure");
-      if (!await confirmAction("Replace your current workspace with this backup?")) return;
-      activeTimer.reset();
+      if (!isValidBackup(parsed)) throw new Error("Invalid TrackMe backup structure");
+      if (!await confirmAction("Replace your current workspace with this backup?", recoveryConfirmation)) return;
+      if (!preserve("Before importing a backup")) return;
+      activeTimer.reset(); activeTimer.setScratchNotes("");
       dispatch({ type: "import-data", state: parsed });
       showToast("Data imported successfully!", "success");
-    }).catch(() => showToast("Import failed: choose a valid StudyTrack backup", "warning"));
+    }).catch(() => showToast("Import failed: choose a valid TrackMe backup", "warning"));
     event.target.value = "";
   };
 
@@ -126,20 +132,9 @@ export function SettingsPage() {
     ? new Date(Math.min(...state.sessions.map(s => new Date(s.startTime).getTime()))).toLocaleDateString()
     : new Date().toLocaleDateString();
 
-  const [categories, setCategories] = useState<string[]>([]);
+  const categories = state.customCategories ?? [];
   const [newCat, setNewCat] = useState("");
-
-  useEffect(() => {
-    try {
-      const stored = localStorage.getItem("studytrack.customTimerCategories");
-      if (stored) setCategories(JSON.parse(stored));
-    } catch {}
-  }, []);
-
-  const saveCategories = (cats: string[]) => {
-    setCategories(cats);
-    localStorage.setItem("studytrack.customTimerCategories", JSON.stringify(cats));
-  };
+  const saveCategories = (categories: string[]) => dispatch({type:'update-categories',categories});
 
   const addCategory = () => {
     if (newCat.trim() && !categories.includes(newCat.trim())) {
@@ -175,7 +170,7 @@ export function SettingsPage() {
               {initials}
             </div>
             <div>
-              <div className="profile-name">{settings.profileName || "StudyTrack User"}</div>
+              <div className="profile-name">{settings.profileName || "TrackMe User"}</div>
               <div className="profile-joined">Personal workspace · Stored on this device</div>
             </div>
           </div>
@@ -330,25 +325,29 @@ export function SettingsPage() {
                 <input type="file" accept="application/json" onChange={importJson} className="sr-only" style={{ display: 'none' }} />
               </label>
             </div>
-            <button className="btn styled-action-btn" onClick={async () => { if (!await confirmAction("Replace your workspace with demo data? Export a backup first to keep your current data.")) return; activeTimer.reset(); dispatch({ type: "load-demo" }); showToast("Demo workspace loaded!", "success"); }}>Load demo data</button>
+            <button className="btn styled-action-btn" onClick={async () => { if (!await confirmAction("Replace your workspace with demo data?", recoveryConfirmation)) return; if (!preserve("Before loading demo data")) return; activeTimer.reset(); activeTimer.setScratchNotes(""); dispatch({ type: "load-demo" }); showToast("Demo workspace loaded!", "success"); }}>Load demo data</button>
           </div>
 
           <div className="danger-zone glass-card" style={{ marginTop: '1.5rem', border: '1px solid var(--red)', background: 'rgba(255,0,0,0.05)', padding: '1rem' }}>
             <strong style={{ color: 'var(--red)', display: 'block', marginBottom: '1rem' }}>Danger Zone</strong>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
               <button className="btn styled-action-btn danger" style={{ background: 'rgba(255,0,0,0.1)' }} onClick={async () => {
-                if (await confirmAction("Clear all sessions? This cannot be undone.")) {
+                if (await confirmAction("Clear all sessions?", recoveryConfirmation)) {
+                  if (!preserve("Before clearing sessions")) return;
+                  activeTimer.reset(); activeTimer.setScratchNotes("");
                   dispatch({ type: "clear-sessions" }); showToast("Sessions cleared", "warning");
                 }
               }}>Clear Sessions Only</button>
               <button className="btn styled-action-btn danger" style={{ background: 'rgba(255,0,0,0.1)' }} onClick={async () => {
-                if (await confirmAction("Clear all tasks? This cannot be undone.")) {
+                if (await confirmAction("Clear all tasks?", recoveryConfirmation)) {
+                  if (!preserve("Before clearing tasks")) return;
                   dispatch({ type: "clear-tasks" }); showToast("Tasks cleared", "warning");
                 }
               }}>Clear Tasks Only</button>
               <button className="btn styled-action-btn danger" onClick={async () => {
-                if (await confirmAction("Clear all StudyTrack data? This cannot be undone unless you exported a backup.")) {
-                  activeTimer.reset(); localStorage.removeItem("studytrack.customTimerCategories"); setCategories([]); dispatch({ type: "clear-data" }); showToast("StudyTrack data reset", "warning");
+                if (await confirmAction("Clear all TrackMe data?", recoveryConfirmation)) {
+                  if (!preserve("Before resetting the workspace")) return;
+                  activeTimer.reset(); activeTimer.setScratchNotes(""); dispatch({ type: "clear-data" }); showToast("TrackMe data reset", "warning");
                 }
               }}>
                 <RotateCcw size={15} /> Reset all data
@@ -356,6 +355,8 @@ export function SettingsPage() {
             </div>
           </div>
         </div>
+
+        <RecoveryPoints key={checkpointVersion}/>
 
         {/* Keyboard Shortcuts - Moved Outside Danger Zone */}
         <div className="panel glass-card full-width">

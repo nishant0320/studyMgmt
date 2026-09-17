@@ -1,6 +1,6 @@
 {
-  "name": "StudyTrack — Personal Study Workspace",
-  "short_name": "StudyTrack",
+  "name": "TrackMe — Personal Study Workspace",
+  "short_name": "TrackMe",
   "description": "Your personal workspace for focus, planning and reflection.",
   "start_url": "/",
   "display": "standalone",

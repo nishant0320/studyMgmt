@@ -30,7 +30,7 @@ export function ConfirmDialog() {
       <div className="confirm-heading"><span className={destructive ? 'confirm-icon danger-text' : 'confirm-icon'}><AlertTriangle size={22} /></span><button className="ghost icon-only" aria-label="Close confirmation" onClick={() => close(false)}><X size={18} /></button></div>
       <h2 id="confirm-title">{request.title || (action === 'Delete' ? 'Delete this item?' : action === 'Clear data' ? 'Clear your data?' : action === 'Replace data' ? 'Replace your workspace?' : 'Ready to continue?')}</h2>
       <p id="confirm-description">{request.message}</p>
-      {destructive && <p className="confirm-note">This change cannot be undone. Keep a backup for anything you may need later.</p>}
+      {destructive && <p className="confirm-note">{request.note ?? "This change cannot be undone. Keep a backup for anything you may need later."}</p>}
       <div className="modal-actions"><button autoFocus onClick={() => close(false)}>Cancel</button><button className={destructive ? 'danger confirm-submit' : 'primary confirm-submit'} onClick={() => close(true)}>{action}</button></div>
     </section>
   </div></Portal>;

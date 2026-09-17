@@ -1,5 +1,6 @@
 export type Confirmation = {
   title?: string;
+  note?: string;
   message: string;
   confirmLabel?: string;
   destructive?: boolean;

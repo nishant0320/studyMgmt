@@ -1,0 +1,45 @@
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import {chromium} from 'playwright-core';
+const base=process.env.TRACKME_URL || process.env.STUDYTRACK_URL || 'http://127.0.0.1:4174';
+const out='/tmp/studytrack-task-days';fs.mkdirSync(out,{recursive:true});
+const browser=await chromium.launch({executablePath:process.env.CHROME_PATH || '/usr/bin/google-chrome',headless:true,args:['--no-sandbox']});
+const page=await browser.newPage({viewport:{width:1440,height:1000},timezoneId:'Asia/Kolkata'});
+const errors=[];page.on('pageerror',e=>errors.push(e.message));
+const go=async route=>{await page.goto(base+'/'+route);await page.locator('.route-frame').waitFor();};
+const data=()=>page.evaluate(()=>JSON.parse(localStorage.getItem('studytrack.workspace.v1')));
+const navigateDay=async name=>{
+ const previous=page.url();await page.getByRole('button',{name,exact:true}).click();
+ await page.waitForURL(url=>url.href!==previous);
+ await page.waitForFunction(()=>{const params=new URLSearchParams(location.search);const date=document.querySelector('input[aria-label="Task date"]');const index=params.get('scope')==='all'?2:params.get('scope')==='unscheduled'?1:0;return date?.value===params.get('date') && document.querySelector('.task-date-scope .segmented')?.children[index]?.getAttribute('aria-pressed')==='true';});
+};
+const create=async name=>{await page.getByRole('button',{name:'New Task',exact:true}).click();await page.getByLabel('Task title',{exact:true}).fill(name);await page.getByRole('button',{name:'Create task',exact:true}).click();};
+try {
+ await go('tasks');const today=await page.getByLabel('Task date',{exact:true}).inputValue();
+ await create('Today reading');assert.equal((await data()).tasks[0].plannedDate,today);
+ await navigateDay('Tomorrow');const tomorrow=await page.getByLabel('Task date',{exact:true}).inputValue();assert.notEqual(tomorrow,today);assert.equal(await page.locator('.task-card').count(),0);
+ await create('Tomorrow revision');assert.equal((await data()).tasks[0].plannedDate,tomorrow);assert.equal((await data()).tasks[0].dueDate,tomorrow);
+ await page.reload();assert.equal(await page.getByLabel('Task date',{exact:true}).inputValue(),tomorrow);assert.equal(await page.locator('.task-card').count(),1);assert.match(await page.locator('.task-kanban').innerText(),/Tomorrow revision/);
+ await navigateDay('Previous task day');assert.equal(await page.getByLabel('Task date',{exact:true}).inputValue(),today);assert.match(await page.locator('.task-kanban').innerText(),/Today reading/);
+ await navigateDay('Previous task day');const yesterday=await page.getByLabel('Task date',{exact:true}).inputValue();await create('Yesterday practice');assert.equal((await data()).tasks[0].plannedDate,yesterday);
+ await navigateDay('Today');assert.equal(await page.locator('.task-card').count(),1);assert.equal(await page.locator('.task-alert-grid article').nth(3).locator('strong').innerText(),'0%');
+ await page.getByRole('button',{name:'Today reading',exact:true}).click();await page.getByRole('combobox',{name:'Status',exact:true}).click();await page.getByRole('option',{name:'Done',exact:true}).click();await page.getByRole('button',{name:'Save task',exact:true}).click();assert.equal(await page.locator('.column-done .task-card').count(),1);assert.equal(await page.locator('.task-alert-grid article').nth(3).locator('strong').innerText(),'100%');
+ console.log('PASS today, tomorrow, past dates, creation defaults, reload, and scoped summaries');
+ await navigateDay('Tomorrow');await page.getByRole('button',{name:'List',exact:true}).click();assert.equal(await page.locator('.compact-task-row').count(),1);await page.screenshot({path:out+'/tasks-tomorrow-desktop.png'});
+ await navigateDay('Unscheduled');await create('Unplanned topic');assert.equal((await data()).tasks[0].plannedDate,undefined);assert.equal(await page.locator('.compact-task-row').count(),1);
+ await page.getByRole('button',{name:'Board',exact:true}).click();await page.getByRole('checkbox',{name:'Select Unplanned topic',exact:true}).check();await page.getByRole('button',{name:/Plan for /}).click();assert.equal(await page.locator('.task-card').count(),0);assert.equal(await page.locator('.bulk-bar').count(),0);assert.equal((await data()).tasks.find(t=>t.title==='Unplanned topic').plannedDate,tomorrow);
+ await navigateDay('Selected day');assert.equal(await page.locator('.task-card').count(),2);
+ await page.getByRole('checkbox',{name:'Select Tomorrow revision',exact:true}).check();await navigateDay('Today');assert.equal(await page.locator('.bulk-bar').count(),0);
+ await navigateDay('All tasks');assert.equal(await page.locator('.task-card').count(),4);
+ console.log('PASS list view, unscheduled tasks, bulk scheduling, all tasks, and cleared cross-day selections');
+ await go('plan');await page.getByLabel('Plan date',{exact:true}).fill(tomorrow);assert.equal(await page.locator('.plan-task').count(),2);
+ await page.locator('.plan-task-copy').getByRole('button',{name:'Tomorrow revision',exact:true}).click();await page.getByRole('dialog').waitFor();assert.equal(await page.getByLabel('Task date',{exact:true}).inputValue(),tomorrow);
+ await page.getByLabel('Study plan date',{exact:false}).fill(yesterday);await page.getByRole('button',{name:'Save task',exact:true}).click();assert.equal(await page.locator('.task-card').count(),1);
+ const moved=(await data()).tasks.find(t=>t.title==='Tomorrow revision');assert.equal(moved.plannedDate,yesterday);assert.equal(moved.dueDate,tomorrow);
+ await page.getByLabel('Task date',{exact:true}).fill(yesterday);assert.equal(await page.locator('.task-card').count(),2);
+ await go('tasks?date=2026-02-31');assert.equal(await page.getByLabel('Task date',{exact:true}).inputValue(),today);
+ console.log('PASS Daily Plan alignment, task deep links, rescheduling without changing deadlines, and invalid URL dates');
+ await page.setViewportSize({width:390,height:1000});await go('tasks?date='+tomorrow);assert.equal(await page.locator('.main-panel').evaluate(e=>e.scrollWidth>e.clientWidth),false);await page.screenshot({path:out+'/tasks-day-mobile.png'});
+ await navigateDay('Previous task day');assert.equal(await page.getByLabel('Task date',{exact:true}).inputValue(),today);await navigateDay('Next task day');assert.equal(await page.getByLabel('Task date',{exact:true}).inputValue(),tomorrow);
+ assert.deepEqual(errors,[]);console.log('PASS mobile navigation and no browser errors');
+} catch(error){await page.screenshot({path:out+'/failure.png'});console.error(error);process.exitCode=1;} finally{await browser.close();}
