@@ -1,8 +1,9 @@
+import { CategorySelect } from "../components/CategorySelect";
 import { StudyHeatmap } from "../components/StudyHeatmap";
 import { taskPomodoroMinutes } from "../utils/pomodoro";
 import { showToast } from "../utils/toast";
 import { FocusRoom } from "../components/FocusRoom";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { Portal } from "../components/Portal";
 import type React from "react";
 import { Bell, CheckCircle2, Clock3, FastForward, Flame, Minus, Pause, Play, Plus, RotateCcw, Search, Target, TimerReset, Volume2, X } from "lucide-react";
@@ -24,10 +25,9 @@ const timerModes: Record<TimerMode, { label: string; minutes: number; detail: st
   custom: { label: "Custom", minutes: 25, detail: "Your call" },
 };
 
-const defaultCategories = ["DSA Algorithm", "System Design", "General Practice", "Project Work", "Revision", "Mock Interview"];
 
 export function TimerPage() {
-  const { state, dispatch } = useAppStore();
+  const { state } = useAppStore();
   const [focusRoom, setFocusRoom] = useState(false);
   const location = useLocation();
   const navigate = useNavigate();
@@ -40,14 +40,7 @@ export function TimerPage() {
 
   const [taskModalOpen, setTaskModalOpen] = useState(false);
   const [taskQuery, setTaskQuery] = useState("");
-  const customCategories = state.customCategories ?? [];
-  const setCustomCategories = (categories: string[]) => dispatch({type:'update-categories',categories});
-  const [newCategory, setNewCategory] = useState("");
   const today = todayStats(state);
-  const categories = useMemo(
-    () => Array.from(new Set([...defaultCategories, ...customCategories, ...state.tasks.map((t) => t.category), ...state.sessions.map((s) => s.category)].filter(Boolean))),
-    [customCategories, state.tasks, state.sessions],
-  );
   const selectedTaskData = state.tasks.find((t) => t.id === selectedTask);
   const taskMatches = state.tasks.filter((t) => t.status !== "done" && `${t.title} ${t.category} ${t.priority}`.toLowerCase().includes(taskQuery.toLowerCase()));
 
@@ -78,14 +71,6 @@ export function TimerPage() {
   const displayedPlannedMinutes = activePlannedMinutes;
   const progress = 1 - remaining / Math.max(1, displayedPlannedMinutes * 60);
   const clampedProgress = Math.max(0, Math.min(1, progress));
-
-  const addCategory = () => {
-    if (!newCategory.trim()) return;
-    const category = newCategory.trim();
-    setCustomCategories(Array.from(new Set([...customCategories, category])));
-    setSelectedCategory(category);
-    setNewCategory("");
-  };
 
 
   return (
@@ -186,18 +171,7 @@ export function TimerPage() {
             </button>
           </div>
           <div className="setup-group">
-            <label>Category</label>
-            <div className="category-chip-grid">
-              {categories.map((cat) => (
-                <button key={cat} className={`category-chip ${selectedCategory === cat ? "selected glow-accent" : ""}`} disabled={Boolean(startedAt)} onClick={() => setSelectedCategory(cat)}>
-                  {cat}
-                </button>
-              ))}
-            </div>
-          </div>
-          <div className="category-add">
-            <input value={newCategory} disabled={running} onChange={(e) => setNewCategory(e.target.value)} onKeyDown={(e) => e.key === "Enter" && addCategory()} placeholder="Add category…" />
-            <button className="icon-button small" onClick={addCategory} disabled={running || !newCategory.trim()} aria-label="Add category"><Plus size={15} /></button>
+            <label>Category<CategorySelect value={selectedCategory} onChange={setSelectedCategory} disabled={Boolean(startedAt)}/></label>
           </div>
           <div className="info-list">
             <div><Bell size={14} /> Notifications {state.settings.notificationsEnabled ? "on" : "off"}</div>

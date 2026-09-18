@@ -38,11 +38,17 @@ npm run preview
 4. If you studied away from the timer, use **History → Log study**. Enter the real start time, duration, subject, optional task, and notes. Future and overlapping records are rejected. Manual logs count as completed focus blocks and are identified in History and CSV exports.
 5. Review your progress and write a short journal reflection. Adjust tomorrow's plan to the time you have.
 
+Category pickers in task creation/editing, calendar events, manual study logs, and the timer share one catalog: built-in choices, custom categories, and names already used by tasks, events, and sessions. Search the dropdown, select with arrows/Enter, or choose **Create** to save a new shared category. Escape closes the dropdown before its parent dialog; Tab leaves the current selection unchanged. Manage custom choices in **Settings → Categories** or search for **Manage study categories** in the command palette. Removing a custom choice does not remove categories from existing records.
+
 On **Calendar**, select a day and use **Add task** to open the same full task form as Tasks, with that study date already filled in. Editing also uses the shared task editor. Tasks appear on their planned day; older unscheduled tasks remain visible on their deadlines and are labeled accordingly. Dragging a task to another calendar day moves its study plan without changing its deadline.
 
 **History** supports Today/7D/30D/90D, inclusive custom dates, subject, outcome, timer/manual, and notes-only filters. Search also finds linked task titles and notes; choose oldest/newest ordering and open tasks directly from a session. Daily focus totals cover all matching sessions for that day, including entries on other pages. CSV exports include the entire filtered result with task names, rather than only the visible page.
 
 The timer heatmap covers the last 365 days. Its five colors show progress toward the current daily goal; hover, tap, or use arrow keys for a day’s focus time and block count.
+
+**Analytics** shows all recorded subjects and charts from the first focus session. Goal-hit rate counts calendar days in the selected range; comparisons use the preceding equal-length period. Focus time includes unfinished blocks but excludes breaks. Hourly patterns group recorded time by session start hour. **Coach** suggests the next task in today's daily plan and opens its configured Pomodoro; an existing session takes priority. Coach weekly figures follow the same Sunday–Saturday calendar week as Stats. Scores are estimates for reflection, and monetary estimates appear only in optional direct feedback mode.
+
+**Settings** has section shortcuts and direct backup access at `/settings#settings-data`. Goal previews translate minutes into focus blocks; removing a custom category asks for confirmation and leaves existing records intact. `Ctrl/Cmd + B` toggles navigation outside text fields; the mobile drawer also has a close button.
 
 Command search (`Ctrl/Cmd + K`) can find every active task, including those beyond the first ten.
 
@@ -73,6 +79,9 @@ TRACKME_URL=http://127.0.0.1:4173 npm run test:pomodoro
 TRACKME_URL=http://127.0.0.1:4173 npm run test:task-days
 TRACKME_URL=http://127.0.0.1:4173 npm run test:calendar-tasks
 TRACKME_URL=http://127.0.0.1:4173 npm run test:history
+TRACKME_URL=http://127.0.0.1:4173 npm run test:insights
+TRACKME_URL=http://127.0.0.1:4173 npm run test:categories
+TRACKME_URL=http://127.0.0.1:4173 npm run test:ui-consistency
 ```
 
 Install Google Chrome first, or supply `CHROME_PATH` pointing to a Chromium executable. Screenshots are written to `/tmp/studytrack-verification` by default; override with `STUDYTRACK_SCREENSHOTS`. The added workflow suite writes screenshots to `/tmp/studytrack-final` and covers daily planning, manual logs, focus notes, checkpoint recovery, and storage failures. The History suite writes screenshots to `/tmp/trackme-history` and verifies existing data, date and subject filters, notes, full-result export, pagination, task links, and mobile layouts. `STUDYTRACK_URL` remains accepted by the browser suites for existing scripts. The original suite covers study workflows, all 12 routes, desktop and mobile layouts, empty and populated workspaces, and browser errors.
@@ -86,3 +95,7 @@ Install Google Chrome first, or supply `CHROME_PATH` pointing to a Chromium exec
 - `src/utils/backup.ts`: backup validation.
 - `tests`: data regression tests and browser workflow checks.
 - `FINAL_IMPLEMENTATION_PLAN.md`: final-release scope and verification record (`IMPLEMENTATION_PLAN.md` preserves the earlier redesign).
+
+Study Categories in Settings shows the complete shared catalog, including built-in choices and categories from existing tasks, events, and sessions. Search the catalog to see usage counts and sources. Removing a custom category preserves saved records; used categories remain available. Category menus keep the selected value visible and offer a separate search field with explicit creation. Use arrows and Enter to select, Escape to cancel the menu, or Tab to continue through the form.
+
+Dashboard and Timer use the same heatmap: Dashboard shows the last 12 weeks, Timer the last year. Colors use the same daily-goal thresholds; hover, tap, and keyboard navigation show the same date, focus time, block count, and goal percentage. The UI consistency suite checks these details, shared dropdown placement, and desktop/mobile layouts; screenshots are saved in `/tmp/trackme-ui-consistency`.

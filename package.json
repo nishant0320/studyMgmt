@@ -10,7 +10,10 @@
     "test:pomodoro": "node tests/pomodoro-browser.mjs",
     "test:task-days": "node tests/task-days-browser.mjs",
     "test:calendar-tasks": "node tests/calendar-tasks-browser.mjs",
-    "test:history": "node tests/history-browser.mjs"
+    "test:history": "node tests/history-browser.mjs",
+    "test:insights": "node tests/insights-browser.mjs",
+    "test:categories": "node tests/categories-browser.mjs",
+    "test:ui-consistency": "node tests/ui-consistency-browser.mjs"
   },
   "dependencies": {
     "lucide-react": "^0.468.0",

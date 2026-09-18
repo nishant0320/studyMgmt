@@ -29,7 +29,9 @@ try {
   assert.equal(await page.getByLabel('Due date', { exact: true }).inputValue(), future);
   await page.getByLabel('Task title', { exact: true }).fill('Calendar revision');
   await page.getByLabel('Description', { exact: true }).fill('Review chapters and practice questions.');
-  await page.getByLabel('Category', { exact: true }).fill('Physics');
+  await page.getByRole('combobox', { name: 'Category', exact: true }).click();
+  await page.getByRole('combobox', { name: 'Search categories', exact: true }).fill('Physics');
+  await page.getByRole('option', { name: 'Create “Physics”', exact: true }).click();
   await page.getByLabel('Estimated Pomodoros', { exact: true }).fill('3');
   await page.getByLabel('Minutes per Pomodoro', { exact: true }).fill('40');
   await page.getByLabel('Due date', { exact: true }).fill(deadline);

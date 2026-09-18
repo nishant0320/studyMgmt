@@ -8,7 +8,7 @@ import {
 } from "lucide-react";
 import { formatTimerClock, timerLabel, useActiveTimer } from "./ActiveTimerProvider";
 import { useAppStore } from "../store/AppStore";
-import { currentStreak, todayStats } from "../utils/stats";
+import { currentStreak, todayStats, dateKey } from "../utils/stats";
 import { StudyToast, toastEventName } from "../utils/toast";
 import { CountUp } from "./CountUp";
 import { useDialogFocus } from "../hooks/useDialogFocus";
@@ -34,6 +34,7 @@ export function Layout() {
   const location = useLocation();
   const navigate = useNavigate();
   const activeTimer = useActiveTimer();
+  const commandKey = /Mac|iPhone|iPad/.test(navigator.platform) ? "⌘" : "Ctrl";
   const today = todayStats(state);
   const streak = currentStreak(state);
   const [now, setNow] = useState(new Date());
@@ -75,11 +76,14 @@ export function Layout() {
         event.preventDefault();
         setPaletteOpen((o) => !o);
       }
-      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "b") {
+      const target = event.target as HTMLElement | null;
+      const editing = !!target?.closest('input, textarea, select, [contenteditable="true"], [role="combobox"], [role="dialog"]');
+      if (!editing && (event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "b") {
         event.preventDefault();
-        setSidebarCollapsed((c) => !c);
+        if (window.matchMedia("(max-width: 900px)").matches) setMobileMenuOpen(open => !open);
+        else setSidebarCollapsed((c) => !c);
       }
-      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "n") {
+      if (!editing && (event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "n") {
         event.preventDefault();
         navigate("/tasks?new=1");
       }
@@ -108,6 +112,7 @@ export function Layout() {
     };
     const quickCommands = [
       timerCommand,
+      { id: "manage-categories", label: "Manage study categories", detail: "Settings · Categories", icon: Settings, action: () => navigate("/settings#settings-categories") },
       { id: "new-task", label: "Create a new task", detail: "Quick capture", icon: Plus, action: () => navigate("/tasks?new=1") },
       { id: "today-calendar", label: "Open today's calendar", detail: "Plan today", icon: CalendarDays, action: () => navigate("/calendar") },
       { id: "today-journal", label: "Write today's journal", detail: "Reflect", icon: BookOpen, action: () => navigate("/journal") },
@@ -181,7 +186,7 @@ export function Layout() {
     <div className={`app-shell`}>
       <a className="skip-link" href="#main-content">Skip to content</a>
       {mobileMenuOpen && <div className="sidebar-overlay" onClick={() => setMobileMenuOpen(false)} />}
-      <aside ref={sidebarRef} aria-label="Workspace navigation" className={`sidebar ${mobileMenuOpen ? "mobile-open" : ""} ${sidebarCollapsed ? "collapsed" : ""}`}>
+      <aside ref={sidebarRef} aria-label="Workspace navigation" id="workspace-navigation" className={`sidebar ${mobileMenuOpen ? "mobile-open" : ""} ${sidebarCollapsed ? "collapsed" : ""}`}>
         <div className="brand">
           <div className="brand-mark"><BookOpen size={18} /></div>
           <div>
@@ -189,6 +194,7 @@ export function Layout() {
             <span>Make time for what matters</span>
           </div>
         </div>
+        <button className="sidebar-mobile-close ghost icon-only" aria-label="Close navigation" onClick={() => setMobileMenuOpen(false)}><X size={18}/></button>
         <nav className="nav-list" aria-label="Main navigation">
           {nav.map((item, index) => {
             const Icon = item.icon;
@@ -206,7 +212,8 @@ export function Layout() {
               >
                 <Icon size={18} />
                 <span>{item.label}</span>
-                {item.to === "/tasks" && state.tasks.some(t => t.status !== "done") && <span className="nav-count">{state.tasks.filter(t => t.status !== "done").length}</span>}
+                {item.to === "/plan" && state.tasks.some(t => t.plannedDate === dateKey(now) && t.status !== 'done') && <span className="nav-count" title="Unfinished tasks planned for today">{state.tasks.filter(t => t.plannedDate === dateKey(now) && t.status !== 'done').length}</span>}
+                {item.to === "/tasks" && state.tasks.some(t => t.status !== "done") && <span className="nav-count" title="All unfinished tasks">{state.tasks.filter(t => t.status !== "done").length}</span>}
               </NavLink>
               </div>
             );
@@ -222,7 +229,7 @@ export function Layout() {
           <div><strong>{state.settings.profileName || "Student"}</strong><small>Personal workspace</small></div>
           <button aria-label="Profile settings" onClick={() => navigate("/settings")}><Settings size={16} /></button>
         </div>
-        <button className="sidebar-collapse-btn ghost" onClick={() => setSidebarCollapsed(c => !c)} aria-label="Toggle Sidebar">
+        <button className="sidebar-collapse-btn ghost" onClick={() => setSidebarCollapsed(c => !c)} aria-label="Toggle Sidebar" aria-expanded={!sidebarCollapsed} title={`${sidebarCollapsed ? "Expand" : "Collapse"} sidebar (${commandKey}+B)`}>
           {sidebarCollapsed ? <ChevronRight size={18} /> : <ChevronLeft size={18} />}
         </button>
       </aside>
@@ -230,17 +237,17 @@ export function Layout() {
       <main ref={mainRef} id="main-content" tabIndex={-1} className="main-panel" onScroll={(e) => setIsScrolled((e.target as HTMLElement).scrollTop > 20)}>
         <div className={`global-topbar ${isScrolled ? "scrolled" : ""}`}>
           <div className="workspace-breadcrumb">
-            <button className="hamburger-btn ghost" onClick={() => setMobileMenuOpen(o => !o)} aria-label="Toggle menu" aria-expanded={mobileMenuOpen}><Menu size={19} /></button>
+            <button className="hamburger-btn ghost" onClick={() => setMobileMenuOpen(o => !o)} aria-label="Toggle menu" aria-controls="workspace-navigation" aria-expanded={mobileMenuOpen}><Menu size={19} /></button>
             <span className="workspace-label">My workspace</span><ChevronRight size={13} />
             <strong>{nav.find(item => item.to === location.pathname)?.label || "Dashboard"}</strong>
           </div>
           <div className="topbar-actions">
             {activeTimer.startedAt && <button className="topbar-session" onClick={() => navigate("/timer")}><Clock3 size={13} /><span>{activeTimer.running ? timerLabel(activeTimer.type) : "Paused"}</span><b>{formatTimerClock(activeTimer.remaining)}</b></button>}
-            <button className="topbar-command-trigger" onClick={() => setPaletteOpen(true)} aria-label="Open command palette"><div><Search size={14} /><span>Search anything</span></div><kbd>⌘ K</kbd></button>
+            <button className="topbar-command-trigger" onClick={() => setPaletteOpen(true)} aria-label="Open command palette"><div><Search size={14} /><span>Search anything</span></div><kbd>{commandKey} K</kbd></button>
             <span className="topbar-date">{now.toLocaleDateString([], { weekday: "short", month: "short", day: "numeric" })}</span>
           </div>
         </div>
-        {(storageError || activeTimer.timerStorageError) && <div className="storage-warning" role="alert"><ShieldAlert size={18} /><span>Your browser could not save changes. Export a backup before closing this tab.</span><button onClick={() => navigate("/settings")}>Open backups</button></div>}
+        {(storageError || activeTimer.timerStorageError) && <div className="storage-warning" role="alert"><ShieldAlert size={18} /><span>Your browser could not save changes. Export a backup before closing this tab.</span><button onClick={() => navigate("/settings#settings-data")}>Open backups</button></div>}
         <div key={routeKey} className={`route-frame route-${routeKey}`}>
           <Suspense fallback={<div className="route-loading" role="status"><span />Loading your study space…</div>}><Outlet /></Suspense>
         </div>
@@ -271,7 +278,7 @@ export function Layout() {
                 onKeyDown={(e) => {
                   if (e.key === "ArrowDown") { e.preventDefault(); setActiveCommandIndex((i) => Math.min(filteredCommands.length - 1, i + 1)); }
                   if (e.key === "ArrowUp") { e.preventDefault(); setActiveCommandIndex((i) => Math.max(0, i - 1)); }
-                  if (e.key === "Enter") runCommand(filteredCommands[activeCommandIndex]);
+                  if (e.key === "Enter") { e.preventDefault(); e.stopPropagation(); runCommand(filteredCommands[activeCommandIndex]); }
                 }}
                 placeholder="Search pages, actions, tasks…"
                 aria-label="Search commands"

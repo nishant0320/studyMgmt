@@ -6,9 +6,9 @@ import { buildStudyHeatmap, heatLevel } from '../utils/heatmap';
 import { dateKey } from '../utils/stats';
 
 type Detail = { index:number; left:number; top:number };
-export function StudyHeatmap({ sessions, dailyGoal }: {sessions:StudySession[];dailyGoal:number}) {
+export function StudyHeatmap({ sessions, dailyGoal, compact = false }: {sessions:StudySession[];dailyGoal:number;compact?:boolean}) {
   const today=dateKey(new Date());
-  const heat=useMemo(()=>buildStudyHeatmap(sessions),[sessions,today]);
+  const heat=useMemo(()=>buildStudyHeatmap(sessions, new Date(`${today}T12:00:00`), compact ? 84 : 365),[sessions,today,compact]);
   const [detail,setDetail]=useState<Detail|null>(null);
   const [focused,setFocused]=useState(heat.cells.length-1);
   const scroller=useRef<HTMLDivElement>(null);
@@ -29,8 +29,8 @@ export function StudyHeatmap({ sessions, dailyGoal }: {sessions:StudySession[];d
   };
   const cell=detail ? heat.cells[detail.index] : undefined;
   const duration=(value:number)=>value>=60?`${Math.floor(value/60)}h ${value%60}m`:`${value} min`;
-  return <section ref={root} className="study-heatmap panel" aria-labelledby={`${tooltipId}-heading`} onKeyDown={event=>{if(event.key==='Escape')setDetail(null);}}>
-    <div className="study-heatmap-heading"><div><h2 id={`${tooltipId}-heading`}>Your year in focus</h2><p>Small steps, seen over time.</p></div><div className="study-heatmap-totals"><span><Clock3 size={15}/><strong>{duration(heat.total)}</strong> studied</span><span><CalendarDays size={15}/><strong>{heat.activeDays}</strong> active days</span></div></div>
+  return <section ref={root} className={`study-heatmap panel ${compact ? 'study-heatmap-compact' : ''}`} aria-labelledby={`${tooltipId}-heading`} onKeyDown={event=>{if(event.key==='Escape')setDetail(null);}}>
+    <div className="study-heatmap-heading"><div><h2 id={`${tooltipId}-heading`}>{compact ? 'Build your rhythm' : 'Your year in focus'}</h2><p>{compact ? 'Every focused day makes a difference.' : 'Small steps, seen over time.'}</p></div><div className="study-heatmap-totals"><span><Clock3 size={15}/><strong>{duration(heat.total)}</strong> studied</span><span><CalendarDays size={15}/><strong>{heat.activeDays}</strong> active days</span></div></div>
     <div className="study-heatmap-scroll" ref={scroller} onScroll={()=>{const index=buttons.current.findIndex(button=>button===document.activeElement);const button=buttons.current[index];if(button)show(index,button);else setDetail(null);}}>
       <div className="study-heatmap-chart" style={{'--heat-weeks':heat.weeks} as CSSProperties}>
         <div className="study-heatmap-months" aria-hidden="true">{heat.months.filter((month,index)=>index===0 || month.column-heat.months[index-1].column>1).map(month=><span key={month.key} style={{gridColumn:month.column+1}}>{month.label}</span>)}</div>
@@ -46,7 +46,7 @@ export function StudyHeatmap({ sessions, dailyGoal }: {sessions:StudySession[];d
         </div></div>
       </div>
     </div>
-    <footer className="study-heatmap-footer"><p>Color shows progress toward your {dailyGoal} min daily goal.</p><div className="study-heatmap-legend" aria-label="Focus intensity: no study, up to 25%, 50%, 75%, and 100% or more of the daily goal"><span>Less</span>{[0,1,2,3,4].map(level=><i key={level} data-level={level} aria-hidden="true"/>)}<span>More</span></div><small>Hover, tap, or use arrow keys to explore a day.</small></footer>
+    <footer className="study-heatmap-footer"><p>{compact ? 'Last 12 weeks' : `Color shows progress toward your ${dailyGoal} min daily goal.`}</p><div className="study-heatmap-legend" aria-label="Focus intensity: no study, up to 25%, 50%, 75%, and 100% or more of the daily goal"><span>Less</span>{[0,1,2,3,4].map(level=><i key={level} data-level={level} aria-hidden="true"/>)}<span>More</span></div><small>Hover, tap, or use arrow keys to explore a day.</small></footer>
     {detail && cell && createPortal(<div className="study-heatmap-tooltip" role="tooltip" id={tooltipId} style={{left:detail.left,top:detail.top}}><strong>{new Date(`${cell.date}T12:00:00`).toLocaleDateString(undefined,{weekday:'short',month:'short',day:'numeric',year:'numeric'})}{cell.date===heat.today?' · Today':''}</strong><span>{cell.minutes ? `${duration(cell.minutes)} of focus`:'No study logged'}</span><p>{cell.blocks} {cell.blocks===1?'block':'blocks'} · {Math.round(cell.minutes/Math.max(1,dailyGoal)*100)}% of daily goal</p></div>,document.body)}
   </section>;
 }

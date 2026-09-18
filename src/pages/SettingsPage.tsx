@@ -1,8 +1,10 @@
+import { useLocation } from "react-router-dom";
 import { RecoveryPoints } from "../components/RecoveryPoints";
 import { saveCheckpoint, downloadBackup } from "../utils/checkpoints";
 import { Select } from "../components/Select";
+import { categoryCatalog, categoryKey } from "../utils/categories";
 import { confirmAction } from "../utils/confirm";
-import { ChangeEvent, useEffect, useState } from "react";
+import { ChangeEvent, useEffect, useMemo, useState } from "react";
 import type React from "react";
 import {
   BellRing,
@@ -56,6 +58,16 @@ const POMODORO_PRESETS = [
 export function SettingsPage() {
   const { state, dispatch } = useAppStore();
   const settings = state.settings;
+  const { hash } = useLocation();
+  useEffect(() => {
+    if (!hash.startsWith('#settings-')) return;
+    const frame = requestAnimationFrame(() => {
+      const section = document.getElementById(hash.slice(1));
+      section?.scrollIntoView({block:'start'});
+      section?.focus({preventScroll:true});
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [hash]);
   const [checkpointVersion, setCheckpointVersion] = useState(0);
   const preserve = (reason: string) => {
     try {saveCheckpoint(state,reason);setCheckpointVersion(version=>version+1);return true;}
@@ -65,7 +77,7 @@ export function SettingsPage() {
 
   const updateNumber = (key: keyof typeof settings, value: string) => {
     const maximum = key === "weeklyGoalMinutes" ? 10080 : key === "dailyGoalMinutes" ? 1440 : key === "sessionsBeforeLongBreak" ? 12 : 180;
-    dispatch({ type: "update-settings", settings: { [key]: Math.min(maximum, Math.max(1, Number(value) || 1)) } as Partial<typeof settings> });
+    dispatch({ type: "update-settings", settings: { [key]: Math.min(maximum, Math.max(1, Math.round(Number(value)) || 1)) } as Partial<typeof settings> });
   };
   const updateBool = (key: keyof typeof settings, value: boolean) =>
     dispatch({ type: "update-settings", settings: { [key]: value } as Partial<typeof settings> });
@@ -133,24 +145,35 @@ export function SettingsPage() {
     : new Date().toLocaleDateString();
 
   const categories = state.customCategories ?? [];
+  const catalog = useMemo(() => categoryCatalog(state), [state.customCategories, state.tasks, state.events, state.sessions]);
   const [newCat, setNewCat] = useState("");
+  const [categorySearch, setCategorySearch] = useState("");
+  const [categoryNotice, setCategoryNotice] = useState("");
+  const visibleCategories = catalog.filter(category => categoryKey(category.name).includes(categoryKey(categorySearch)));
   const saveCategories = (categories: string[]) => dispatch({type:'update-categories',categories});
 
   const addCategory = () => {
-    if (newCat.trim() && !categories.includes(newCat.trim())) {
-      saveCategories([...categories, newCat.trim()]);
-      setNewCat("");
-    }
+    const name = newCat.trim();
+    if (!name) return;
+    const existing = catalog.find(category => categoryKey(category.name) === categoryKey(name));
+    if (existing) { setCategoryNotice(`“${existing.name}” is already available.`); setCategorySearch(existing.name); return; }
+    saveCategories([...categories, name]);
+    setNewCat(""); setCategorySearch(""); setCategoryNotice(`“${name}” is ready to use across your workspace.`);
   };
 
-  const removeCategory = (cat: string) => {
-    saveCategories(categories.filter(c => c !== cat));
+  const removeCategory = async (cat: string) => {
+    const entry = catalog.find(category => categoryKey(category.name) === categoryKey(cat));
+    const retained = !!entry && (entry.builtIn || entry.tasks + entry.events + entry.sessions > 0);
+    if (!await confirmAction(`Remove “${cat}” from your custom categories?`, {note: retained ? "This category will remain available because it is built in or used by saved records. Your records stay unchanged." : "This unused custom category will be removed from your pickers."})) return;
+    saveCategories(categories.filter(c => categoryKey(c) !== categoryKey(cat)));
+    setCategoryNotice(retained ? `“${cat}” is no longer custom. It remains available for existing records or as a built-in choice.` : `“${cat}” removed.`);
   };
 
   return (
     <div className="settings-page page-transition">
       <PageHeader eyebrow="Preferences" title="Make it yours" description="Your routines, your goals, your workspace. Changes save automatically." />
 
+      <nav className="settings-section-nav" aria-label="Settings sections">{[['profile','Profile'],['timer','Timer'],['goals','Goals & appearance'],['audio','Sound & notifications'],['categories','Categories'],['data','Backups & data'],['shortcuts','Shortcuts']].map(([id,label]) => <a key={id} href={`#settings-${id}`}>{label}</a>)}</nav>
       <section className="settings-data-strip glass-card stat-grid">
         <article><Database size={17} className="text-accent" /><div><strong>{storageSize} KB</strong><span>local data</span></div></article>
         <article><Clock3 size={17} className="text-accent-3" /><div><strong>{state.sessions.length}</strong><span>sessions</span></div></article>
@@ -161,7 +184,7 @@ export function SettingsPage() {
       <section className="settings-grid">
         
         {/* Profile Section */}
-        <div className="panel glass-card">
+        <div id="settings-profile" tabIndex={-1} className="panel glass-card settings-anchor">
           <div className="settings-section-header">
             <h2><User size={18} /> Profile</h2>
           </div>
@@ -181,7 +204,7 @@ export function SettingsPage() {
         </div>
 
         {/* Timer & Pomodoro */}
-        <div className="panel glass-card">
+        <div id="settings-timer" tabIndex={-1} className="panel glass-card settings-anchor">
           <div className="settings-section-header">
             <h2><Timer size={18} /> Timer & Pomodoro</h2>
           </div>
@@ -195,21 +218,21 @@ export function SettingsPage() {
           </label>
           <hr className="section-separator" />
           <label>Focus duration (min)<input type="number" min={1} value={settings.focusDuration} onChange={(e) => { updateNumber("focusDuration", e.target.value); updateString("pomodoroPreset", "custom"); }} /></label>
+          <p className="muted-copy settings-context">This is the default for free study. Tasks with their own Pomodoro duration keep that duration.</p>
           <label>Short break (min)<input type="number" min={1} value={settings.shortBreakDuration} onChange={(e) => { updateNumber("shortBreakDuration", e.target.value); updateString("pomodoroPreset", "custom"); }} /></label>
           <label>Long break (min)<input type="number" min={1} value={settings.longBreakDuration} onChange={(e) => { updateNumber("longBreakDuration", e.target.value); updateString("pomodoroPreset", "custom"); }} /></label>
           <label>Sessions before long break<input type="number" min={1} value={settings.sessionsBeforeLongBreak} onChange={(e) => { updateNumber("sessionsBeforeLongBreak", e.target.value); updateString("pomodoroPreset", "custom"); }} /></label>
         </div>
 
         {/* Goals & Appearance */}
-        <div className="panel glass-card">
+        <div id="settings-goals" tabIndex={-1} className="panel glass-card settings-anchor">
           <div className="settings-section-header">
             <h2><Palette size={18} /> Goals & Appearance</h2>
           </div>
           <label>Daily goal (min)<input type="number" min={1} value={settings.dailyGoalMinutes} onChange={(e) => updateNumber("dailyGoalMinutes", e.target.value)} /></label>
           <label>Weekly goal (min)<input type="number" min={1} value={settings.weeklyGoalMinutes} onChange={(e) => updateNumber("weeklyGoalMinutes", e.target.value)} /></label>
-          
+          <p className="settings-goal-preview">At {settings.focusDuration} min per block, your daily target is about <strong>{Math.ceil(settings.dailyGoalMinutes / settings.focusDuration)} blocks</strong>. Your weekly target averages <strong>{Math.round(settings.weeklyGoalMinutes / 7)} min a day</strong>.</p>
           <hr className="section-separator" />
-          
           <label>Accent color<input type="color" value={colorInputValue(settings.accentColor)} onChange={(e) => dispatch({ type: "update-settings", settings: { accentColor: e.target.value } })} /></label>
           <div className="swatch-row">
             {swatches.map((s) => (
@@ -219,7 +242,7 @@ export function SettingsPage() {
         </div>
 
         {/* Sound & Notifications */}
-        <div className="panel glass-card">
+        <div id="settings-audio" tabIndex={-1} className="panel glass-card settings-anchor">
           <div className="settings-section-header">
             <h2><Music size={18} /> Sound & Notifications</h2>
           </div>
@@ -265,35 +288,36 @@ export function SettingsPage() {
         </div>
 
         {/* Category Manager */}
-        <div className="panel glass-card">
+        <div id="settings-categories" tabIndex={-1} className="panel glass-card settings-anchor">
           <div className="settings-section-header">
-            <h2><Tags size={18} /> Timer Categories</h2>
+            <h2><Tags size={18} /> Study Categories</h2>
+            <p className="muted-copy">All {catalog.length} categories available in your tasks, events, and study sessions. Built-in choices and categories from saved records appear here too.</p>
           </div>
-          <div style={{ marginBottom: '1rem', display: 'flex', gap: '0.5rem' }}>
-            <input 
-              type="text" 
-              aria-label="New category" placeholder="New category…" 
-              value={newCat}
-              onChange={(e) => setNewCat(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && addCategory()}
-            />
-            <button className="btn styled-action-btn" onClick={addCategory} disabled={!newCat.trim()} aria-label="Add category"><Plus size={16} /></button>
+          <div className="category-add-row">
+            <input type="text" aria-label="New category" placeholder="Add a study category…" maxLength={100} value={newCat}
+              onChange={e => {setNewCat(e.target.value);setCategoryNotice("");}}
+              onKeyDown={e => {if(e.key === "Enter") {e.preventDefault();addCategory();}}}/>
+            <button className="btn styled-action-btn" onClick={addCategory} disabled={!newCat.trim()} aria-label="Add category"><Plus size={16}/> Add</button>
           </div>
-          <div className="category-list" style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-            {categories.length === 0 && <span style={{ color: 'var(--text-dim)', fontSize: '0.85rem' }}>No custom categories yet.</span>}
-            {categories.map(c => (
-              <div key={c} className="glass-card" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.5rem 1rem' }}>
-                <span>{c}</span>
-                <button className="btn icon-btn danger" onClick={() => removeCategory(c)} aria-label="Delete category" style={{ background: 'transparent', padding: '4px' }}>
-                  <Trash2 size={15} />
-                </button>
-              </div>
-            ))}
+          <p className="category-notice" role="status">{categoryNotice}</p>
+          <div className="category-catalog-toolbar"><label className="category-search"><span>Find a category</span><input type="search" aria-label="Search study categories" placeholder="Search categories…" value={categorySearch} onChange={e => setCategorySearch(e.target.value)}/></label><span>{visibleCategories.length} of {catalog.length}</span></div>
+          <div className="category-list">
+            {visibleCategories.length === 0 && <p className="muted-copy">No categories match your search.</p>}
+            {visibleCategories.map(category => <div key={categoryKey(category.name)} className="category-catalog-row">
+              <div className="category-catalog-copy"><strong>{category.name}</strong><span>{[
+                category.tasks ? `${category.tasks} ${category.tasks === 1 ? 'task' : 'tasks'}` : '',
+                category.events ? `${category.events} ${category.events === 1 ? 'event' : 'events'}` : '',
+                category.sessions ? `${category.sessions} study ${category.sessions === 1 ? 'block' : 'blocks'}` : '',
+              ].filter(Boolean).join(' · ') || 'Ready for your next study block'}</span></div>
+              <span className={`category-source ${category.custom ? 'is-custom' : ''}`}>{category.custom ? 'Custom' : category.builtIn ? 'Built-in' : 'From records'}</span>
+              {category.custom && <button className="btn icon-btn danger" onClick={() => removeCategory(category.name)} aria-label="Delete category" title={`Remove ${category.name} from custom categories`}><Trash2 size={15}/></button>}
+            </div>)}
           </div>
+          <p className="category-catalog-note">Removing a custom choice keeps your saved records. Categories still used by those records stay available.</p>
         </div>
 
         {/* Data & Danger Zone */}
-        <div className="panel glass-card">
+        <div id="settings-data" tabIndex={-1} className="panel glass-card settings-anchor">
           <div className="settings-section-header">
             <h2><HardDrive size={18} /> Data management</h2>
           </div>
@@ -359,13 +383,13 @@ export function SettingsPage() {
         <RecoveryPoints key={checkpointVersion}/>
 
         {/* Keyboard Shortcuts - Moved Outside Danger Zone */}
-        <div className="panel glass-card full-width">
+        <div id="settings-shortcuts" tabIndex={-1} className="panel glass-card full-width settings-anchor">
           <div className="shortcut-reference glass-card">
             <strong className="shortcut-title"><Keyboard size={18} /> Keyboard shortcuts</strong>
             <div className="shortcut-list">
               <span className="shortcut-item"><div className="kbd-group"><kbd className="kbd-styled">Ctrl</kbd> + <kbd className="kbd-styled">K</kbd></div> Open command center</span>
               <span className="shortcut-item"><div className="kbd-group"><kbd className="kbd-styled">Esc</kbd></div> Close menus and dialogs</span>
-              <span className="shortcut-item"><div className="kbd-group"><kbd className="kbd-styled">Ctrl</kbd> + <kbd className="kbd-styled">S</kbd></div> Save journal entry</span>
+              <span className="shortcut-item"><div className="kbd-group"><kbd className="kbd-styled">Ctrl / ⌘</kbd> + <kbd className="kbd-styled">B</kbd></div> Toggle navigation (outside text fields)</span>
             </div>
           </div>
         </div>

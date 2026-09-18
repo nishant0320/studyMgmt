@@ -4,9 +4,9 @@ import { dateKey } from './stats';
 export function heatLevel(minutes: number, goal: number): number {
   return minutes <= 0 ? 0 : Math.min(4, Math.ceil(minutes / Math.max(1,goal) * 4));
 }
-export function buildStudyHeatmap(sessions: StudySession[], now = new Date()) {
+export function buildStudyHeatmap(sessions: StudySession[], now = new Date(), days = 365) {
   const end = new Date(now.getFullYear(),now.getMonth(),now.getDate());
-  const start = new Date(end);start.setDate(start.getDate()-364);
+  const start = new Date(end);start.setDate(start.getDate()-(days-1));
   const first = new Date(start);first.setDate(first.getDate()-first.getDay());
   const totals = new Map<string,{minutes:number;blocks:number}>();
   for (const session of sessions) {
@@ -16,7 +16,7 @@ export function buildStudyHeatmap(sessions: StudySession[], now = new Date()) {
   }
   const cells: { date:string; week:number; day:number; minutes:number; blocks:number; inRange:boolean }[]=[];
   const months: {key:string;label:string;column:number}[]=[];
-  for (let offset=0;offset<371;offset++) {
+  for (let offset=0;offset<days+6;offset++) {
     const current=new Date(first);current.setDate(first.getDate()+offset);
     if (current>end) break;
     const date=dateKey(current);const week=Math.floor(offset/7);

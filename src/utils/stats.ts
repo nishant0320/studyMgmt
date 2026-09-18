@@ -131,8 +131,9 @@ export function categoryDistribution(sessions: StudySession[]) {
 
 export function hourDistribution(sessions: StudySession[]) {
   const map = sessions.reduce<Record<string, number>>((acc, session) => {
+    if (session.type !== "focus") return acc;
     const hour = new Date(session.startTime).getHours();
-    acc[`${hour}:00`] = (acc[`${hour}:00`] ?? 0) + (session.completed ? session.actualDuration : Math.round(session.actualDuration * 0.5));
+    acc[`${hour}:00`] = (acc[`${hour}:00`] ?? 0) + session.actualDuration;
     return acc;
   }, {});
   return Array.from({ length: 24 }, (_, hour) => ({ hour: `${hour}:00`, minutes: map[`${hour}:00`] ?? 0 })).filter((item) => item.minutes > 0);

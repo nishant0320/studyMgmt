@@ -1,3 +1,4 @@
+import { CategorySelect } from "./CategorySelect";
 import { useEffect, useState } from "react";
 import { Plus, Play, Trash2, X } from "lucide-react";
 import { useNavigate } from "react-router-dom";
@@ -58,7 +59,7 @@ export function NewTaskModal({ status, onClose, plannedDate }: { status: TaskSta
           <label>Due date<input type="date" value={task.dueDate} onChange={(event) => setTask({ ...task, dueDate: event.target.value })} /></label>
         </div>
         <div className="two-col">
-          <label>Category<input value={task.category} onChange={(event) => setTask({ ...task, category: event.target.value })} /></label>
+          <label>Category<CategorySelect value={task.category} onChange={category => setTask({ ...task, category })} /></label>
           <label>Estimated Pomodoros<input type="number" min={1} value={task.estimatedPomodoros} onChange={(event) => setTask({ ...task, estimatedPomodoros: Math.max(1, Math.round(Number(event.target.value) || 1)) })} /></label>
         </div>
         <label>Minutes per Pomodoro<input aria-label="Minutes per Pomodoro" type="number" min={1} max={180} step={1} value={task.pomodoroMinutes} onChange={e=>setTask({...task,pomodoroMinutes:Math.min(180,Math.max(1,Math.round(Number(e.target.value)||1)))})}/></label>
@@ -109,7 +110,7 @@ export function TaskDetailModal({ task, onClose }: { task: Task; onClose: () => 
           <label>Priority <Select aria-label="Priority" value={local.priority} onChange={(event) => setLocal({ ...local, priority: event.target.value as Priority })}><option value="high">High</option><option value="medium">Medium</option><option value="low">Low</option></Select></label>
         </div>
         <div className="two-col">
-          <label>Category <input value={local.category} onChange={(event) => setLocal({ ...local, category: event.target.value })} /></label>
+          <label>Category<CategorySelect value={local.category} onChange={category => setLocal({ ...local, category })} /></label>
           <label>Estimated Pomodoros <input type="number" min={1} value={local.estimatedPomodoros} onChange={(event) => setLocal({ ...local, estimatedPomodoros: Math.max(1, Math.round(Number(event.target.value) || 1)) })} /></label>
         </div>
         <label>Minutes per Pomodoro<input aria-label="Minutes per Pomodoro" type="number" min={1} max={180} step={1} value={taskPomodoroMinutes(local,state.settings.focusDuration)} onChange={e=>setLocal({...local,pomodoroMinutes:Math.min(180,Math.max(1,Math.round(Number(e.target.value)||1)))})}/></label>

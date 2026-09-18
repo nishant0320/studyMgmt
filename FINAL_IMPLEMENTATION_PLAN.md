@@ -75,3 +75,30 @@ Existing browser regression suite also passes all study workflows and all 12 rou
 - [x] Verify filter boundaries, grouping, existing-data compatibility, notes and deletion, export, desktop/mobile layout, and production build.
 
 Verification: all 24 data tests and the production build pass. The existing browser regression suite passes all workflows and all 12 pages in empty/populated desktop/mobile states. `npm run test:history` verifies retained browser data, inclusive dates, combined filters, ordering, full-day totals across pagination, CSV task names and full filtered exports, searchable notes, delete confirmation, task links, TrackMe metadata/downloads, and import of an older StudyTrack backup. Final screenshots reviewed at 1440px and 390px in `/tmp/trackme-history`; no browser JavaScript errors.
+
+## Insights and navigation follow-up
+- [x] Correct Analytics period boundaries, calendar-day goal rates, real subject totals, and empty/sparse data presentation; keep exports consistent with displayed figures.
+- [x] Give Coach an actionable next study block from today's plan, honest empty states, consistent week boundaries, and clearer metric descriptions.
+- [x] Keep Stats focus-only, remove unsupported directional arrows, and improve snapshot export for long text.
+- [x] Add Settings section navigation and goal context, confirm category removal, and improve sidebar/topbar keyboard and mobile behavior.
+- [x] Verify calculations, sparse/custom subject data, coach-to-timer handoff, settings anchors, keyboard behavior, and responsive layouts; run production build and regressions.
+
+Verification: production build and all 28 data tests pass. `npm run test:insights` passes sparse-data charts, real subject totals, calendar-day goal rates, CSV/SVG exports, focus-only Stats, Coach daily-plan timer handoff, cancelled preferences, settings deep links and goal previews, category confirmation, protected typing shortcuts, and mobile navigation. The existing browser suite passes all workflows and all 12 pages in empty/populated desktop/mobile states (48 combinations). No browser JavaScript errors. Screenshots reviewed in `/tmp/trackme-insights`. Removing the radar-only dependencies reduced the Analytics page bundle from about 49 KB to 24 KB (uncompressed).
+
+## Shared category picker follow-up
+- [x] Use one category catalog for built-in, custom, task, event, and session categories; deduplicate and retain current selections.
+- [x] Replace task creation/editing category inputs with an accessible searchable dropdown and inline category creation; reuse it for events and manual study logs.
+- [x] Keep Timer categories in sync, protect paused sessions from category changes, and expose category management through command search.
+- [x] Verify keyboard dismissal, selection, creation, cancellation, cross-page availability, legacy categories, and responsive layouts; run build/data/browser checks.
+
+Verification: production build and all 31 data tests pass. `npm run test:categories` verifies every category source, case-insensitive deduplication, legacy selection preservation, inline creation, keyboard search/selection, Escape/Tab behavior, Calendar and manual-log persistence, Timer selection and paused lock, command-search navigation, long-list scrolling, and mobile touch/viewport behavior. `npm run test:calendar-tasks` and the existing 12-page browser regression suite also pass, with no JavaScript errors. Desktop/mobile category screenshots reviewed in `/tmp/trackme-categories`. Timer now uses the same compact searchable picker instead of an expanding category button list.
+
+## Category management, dropdowns, and heatmap consistency
+- [x] Show the complete shared category catalog in Settings, with sources, usage, search, duplicate feedback, and safe custom-category removal.
+- [x] Give all dropdowns consistent surfaces, spacing, selection states, and viewport positioning; separate category selection from search and preserve keyboard/modal behavior.
+- [x] Reuse Timer's accessible heatmap on Dashboard, including the same colors, goal thresholds, hover, tap, and keyboard details.
+- [x] Check affected workflows and all pages at desktop/mobile sizes; fix regressions and run data tests and production build.
+
+Verification: production build and all 32 data tests pass. `test:categories` verifies all category sources in Settings, usage counts, case-insensitive duplicate feedback, cancellation, used/unused category removal, inline creation, keyboard navigation, and cross-page persistence. `test:ui-consistency` verifies identical Dashboard/Timer heatmap tooltips and all five color levels, daily-plan task filtering, task links, shared menus across five pages, short/mobile viewport placement, wrapped labels, Shift+Tab, and touch details. `test:calendar-tasks`, `test:pomodoro`, and `test:browser` also pass, including all 12 routes in empty/populated desktop/mobile layouts (48 combinations). No browser JavaScript errors or native dialogs. Screenshots reviewed in `/tmp/trackme-categories` and `/tmp/trackme-ui-consistency`.
+
+Additional issues found and fixed during validation: Dashboard's Today filter used deadlines instead of planned study dates; command-palette Enter could activate its restored trigger and reopen the palette; dropdowns could close during automatic scrolling on short screens. Shared popup positioning now measures actual content, follows scrolling, and respects viewport bounds.

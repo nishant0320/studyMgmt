@@ -1,5 +1,5 @@
+import { CategorySelect } from "../components/CategorySelect";
 import { NewTaskModal, TaskDetailModal } from "../components/TaskModals";
-import { Select } from "../components/Select";
 import { confirmAction } from "../utils/confirm";
 import { useEffect, useMemo, useState } from "react";
 import { PageHeader } from "../components/Layout";
@@ -66,7 +66,6 @@ export function CalendarPage() {
   const year = currentDate.getFullYear();
   const month = currentDate.getMonth();
   const dailyGoal = state.settings.dailyGoalMinutes || 60;
-  const categories = Array.from(new Set(["General", ...state.tasks.map((task) => task.category), ...state.events.map((event) => event.category), ...state.sessions.map((session) => session.category)])).filter(Boolean);
 
   const calendarDays = useMemo<CalendarCell[]>(() => {
     const days: CalendarCell[] = [];
@@ -402,7 +401,7 @@ export function CalendarPage() {
               <label>Start time<input type="time" value={eventStartTime} onChange={(event) => setEventStartTime(event.target.value)} /></label>
               <label>End time<input type="time" value={eventEndTime} min={eventStartTime || undefined} disabled={!eventStartTime} onChange={(event) => setEventEndTime(event.target.value)} /></label>
             </div>
-            <label>Category<Select aria-label="Category" value={eventCategory} onChange={(event) => setEventCategory(event.target.value)}>{categories.map((item) => <option key={item}>{item}</option>)}</Select></label>
+            <label>Category<CategorySelect value={eventCategory} onChange={setEventCategory}/></label>
             <label>Notes<textarea value={eventNotes} onChange={(event) => setEventNotes(event.target.value)} placeholder="Location, preparation, or context" /></label>
             <div className="modal-actions"><button onClick={closeEventModal}>Cancel</button><button className="primary" onClick={saveEvent} disabled={!eventTitle.trim() || !eventDate}><CalendarPlus size={16} /> Save Event</button></div>
           </div>

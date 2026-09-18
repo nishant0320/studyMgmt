@@ -1,3 +1,4 @@
+import { buildDashboard, rangeDays, type RangeKey } from "../utils/analytics";
 import { useMemo, useState } from "react";
 import type React from "react";
 import {
@@ -7,11 +8,6 @@ import {
   BarChart,
   CartesianGrid,
   Cell,
-  PolarAngleAxis,
-  PolarGrid,
-  PolarRadiusAxis,
-  Radar,
-  RadarChart,
   ResponsiveContainer,
   Tooltip,
   XAxis,
@@ -20,36 +16,24 @@ import {
 import { Activity, CalendarCheck2, CheckCircle2, Clock, Download, Target, TrendingUp, Zap, Inbox } from "lucide-react";
 import { formatTimerClock, useActiveTimer } from "../components/ActiveTimerProvider";
 import { useAppStore } from "../store/AppStore";
-import { StudySession } from "../types";
-import { chartAxisTick, chartAxisTickSmall, chartBarRadius, chartCursor, chartGridStroke, chartLine, chartTooltipItemStyle, chartTooltipLabelStyle, chartTooltipStyle, minuteTooltipFormatter } from "../utils/chartTheme";
-import { dateKey } from "../utils/stats";
+import { chartAxisTick, chartBarRadius, chartCursor, chartGridStroke, chartLine, chartTooltipItemStyle, chartTooltipLabelStyle, chartTooltipStyle, minuteTooltipFormatter } from "../utils/chartTheme";
 import { showToast } from "../utils/toast";
 import { CountUp } from "../components/CountUp";
-import { EmptyState } from "../components/Layout";
-
-type RangeKey = "7d" | "30d" | "90d";
-type TrendPoint = { date: string; fullDate: string; minutes: number };
-type CategoryPoint = { subject: string; minutes: number; fullMark: number };
-type HourPoint = { hour: string; minutes: number };
-
-const rangeDays: Record<RangeKey, number> = { "7d": 7, "30d": 30, "90d": 90 };
-const defaultCategories = ["DSA Algorithm", "System Design", "General Practice", "Project Work", "Revision", "Mock Interview", "Frontend Dev", "Backend Dev"];
 
 export function AnalyticsPage() {
   const { state } = useAppStore();
   const activeTimer = useActiveTimer();
   const [range, setRange] = useState<RangeKey>("7d");
-  const focusSessions = state.sessions.filter((session) => session.type === "focus");
 
-  const dashboard = useMemo(() => buildDashboard(focusSessions, range, state.settings.dailyGoalMinutes), [focusSessions, range, state.settings.dailyGoalMinutes]);
-  const hasTrendData = dashboard.trendData.filter((item) => item.minutes > 0).length >= 3;
-  const hasCategoryData = dashboard.categoryData.filter((item) => item.minutes > 0).length >= 3;
-  const hasHourlyData = dashboard.hourlyData.filter((item) => item.minutes > 0).length >= 3;
+  const dashboard = useMemo(() => buildDashboard(state.sessions, range, state.settings.dailyGoalMinutes), [state.sessions, range, state.settings.dailyGoalMinutes]);
+  const hasTrendData = dashboard.trendData.some((item) => item.minutes > 0);
+  const hasCategoryData = dashboard.categoryData.some((item) => item.minutes > 0);
+  const hasHourlyData = dashboard.hourlyData.some((item) => item.minutes > 0);
   
   const periodText = `vs last ${rangeDays[range]} days`;
   const previousText = dashboard.previousMinutes > 0
     ? `${dashboard.delta >= 0 ? "+" : ""}${dashboard.delta}% ${periodText}`
-    : `First tracked period (${periodText})`;
+    : dashboard.totalMinutes ? "No earlier focus time to compare" : "No focus time in either period";
 
   const exportRange = () => {
     const rows = [
@@ -78,7 +62,7 @@ export function AnalyticsPage() {
       <section className="analytics-control-row">
         <div className="range-tabs glass-pill" aria-label="Analytics range">
           {(["7d", "30d", "90d"] as RangeKey[]).map((item) => (
-            <button key={item} className={`pill-btn ${range === item ? "active-gradient" : ""}`} onClick={() => setRange(item)}>{item.toUpperCase()}</button>
+            <button key={item} className={`pill-btn ${range === item ? "active-gradient" : ""}`} aria-pressed={range === item} onClick={() => setRange(item)}>{item.toUpperCase()}</button>
           ))}
         </div>
         <button className="btn glass-card" onClick={exportRange}><Download size={16} /> Export range</button>
@@ -86,19 +70,20 @@ export function AnalyticsPage() {
 
       <section className="analytics-kpi-grid">
         <KpiCard title="Total Study Time" value={formatTimeWithCountUp(dashboard.totalMinutes)} trend={previousText} icon={<Clock size={18} />} tone="accent" trendDirection={dashboard.delta > 0 ? "up" : dashboard.delta < 0 ? "down" : "neutral"} />
-        <KpiCard title="Total Sessions" value={<CountUp value={dashboard.totalSessions} />} trend={dashboard.totalSessions ? `Consistent activity ${periodText}` : `No sessions in ${periodText}`} icon={<Zap size={18} />} tone="blue" trendDirection={dashboard.totalSessions > 0 ? "up" : "neutral"} />
-        <KpiCard title="Avg. Session" value={<><CountUp value={dashboard.avgSessionLength} />m</>} trend={dashboard.avgSessionLength >= 45 ? `Deep focus achieved ${periodText}` : `Build longer blocks ${periodText}`} icon={<Target size={18} />} tone="purple" trendDirection={dashboard.avgSessionLength >= 45 ? "up" : "neutral"} />
-        <KpiCard title="Clean Completion" value={<><CountUp value={dashboard.completionRate} />%</>} trend={`${dashboard.cleanSessions} uninterrupted blocks ${periodText}`} icon={<CheckCircle2 size={18} />} tone="good" trendDirection={dashboard.completionRate >= 80 ? "up" : "down"} />
-        <KpiCard title="Active Days" value={<CountUp value={dashboard.activeDays} />} trend={`${dashboard.goalHits} daily goals reached ${periodText}`} icon={<CalendarCheck2 size={18} />} tone="blue" trendDirection={dashboard.activeDays > 0 ? "up" : "neutral"} />
-        <KpiCard title="Goal Hit Rate" value={<><CountUp value={dashboard.goalHitRate} />%</>} trend={`Across ${rangeDays[range]} calendar days ${periodText}`} icon={<Target size={18} />} tone="accent" trendDirection={dashboard.goalHitRate >= 50 ? "up" : "down"} />
+        <KpiCard title="Total Sessions" value={<CountUp value={dashboard.totalSessions} />} trend="Focus sessions in this period" icon={<Zap size={18} />} tone="blue"  />
+        <KpiCard title="Avg. Session" value={<><CountUp value={dashboard.avgSessionLength} />m</>} trend="Actual focus time per recorded block" icon={<Target size={18} />} tone="purple"  />
+        <KpiCard title="Completion rate" value={<><CountUp value={dashboard.completionRate} />%</>} trend={`${dashboard.cleanSessions} completed without interruption`} icon={<CheckCircle2 size={18} />} tone="good"  />
+        <KpiCard title="Active Days" value={<CountUp value={dashboard.activeDays} />} trend={`${dashboard.goalHits} ${dashboard.goalHits === 1 ? "day" : "days"} reached your daily goal`} icon={<CalendarCheck2 size={18} />} tone="blue"  />
+        <KpiCard title="Goal Hit Rate" value={<><CountUp value={dashboard.goalHitRate} />%</>} trend={`${dashboard.goalHits} of ${rangeDays[range]} calendar days`} icon={<Target size={18} />} tone="accent"  />
       </section>
 
       <section className="analytics-insight-strip glass-card" style={{ padding: "var(--sp-4)", display: "flex", gap: "var(--sp-4)", borderRadius: "var(--r-md)", borderTop: "1px solid rgba(255,255,255,0.1)" }}>
-        <article style={{ flex: 1 }}><span>Strongest category</span><strong>{dashboard.strongestCategory?.subject ?? "No signal yet"}</strong><small>{dashboard.strongestCategory ? formatTime(dashboard.strongestCategory.minutes) : "Start a focus block"}</small></article>
-        <article style={{ flex: 1 }}><span>Peak hour</span><strong>{dashboard.strongestHour?.hour ?? "No signal yet"}</strong><small>{dashboard.strongestHour ? <><CountUp value={dashboard.strongestHour.minutes} />m accumulated</> : "Needs session history"}</small></article>
-        <article style={{ flex: 1 }}><span>Period comparison</span><strong>{dashboard.previousMinutes ? <>{dashboard.delta >= 0 ? "+" : ""}<CountUp value={dashboard.delta} />%</> : "Baseline"}</strong><small>{dashboard.delta >= 0 ? "Output is moving up" : "Output is below last period"}</small></article>
+        <article style={{ flex: 1 }}><span>Most studied subject</span><strong>{dashboard.strongestCategory?.subject ?? "No signal yet"}</strong><small>{dashboard.strongestCategory ? formatTime(dashboard.strongestCategory.minutes) : "Start a focus block"}</small></article>
+        <article style={{ flex: 1 }}><span>Most-used start hour</span><strong>{dashboard.strongestHour?.hour ?? "No signal yet"}</strong><small>{dashboard.strongestHour ? <><CountUp value={dashboard.strongestHour.minutes} />m accumulated</> : "Needs session history"}</small></article>
+        <article style={{ flex: 1 }}><span>Period comparison</span><strong>{dashboard.previousMinutes ? <>{dashboard.delta >= 0 ? "+" : ""}<CountUp value={dashboard.delta} />%</> : "Baseline"}</strong><small>{dashboard.previousMinutes ? `${formatTime(dashboard.previousMinutes)} in the previous period` : "No earlier focus time to compare"}</small></article>
       </section>
 
+      <p className="insights-method-note">Focus time includes completed and unfinished blocks; breaks are excluded. Goals use your current daily target. Today is still in progress.</p>
       <section className="analytics-chart-layout">
         <ChartCard className="study-trend-card" icon={<TrendingUp size={20} />} title="Study Trends" tone="accent">
           {hasTrendData ? (
@@ -117,24 +102,14 @@ export function AnalyticsPage() {
                 <Area type="monotone" dataKey="minutes" stroke="var(--accent)" strokeWidth={chartLine.strokeWidth} fill="var(--accent)" fillOpacity={0.12} dot={{ ...chartLine.dot, stroke: "var(--accent)" }} activeDot={{ ...chartLine.activeDot, stroke: "var(--accent)", fill: "var(--accent)" }} />
               </AreaChart>
             </ResponsiveContainer>
-          ) : <ChartEmpty title="Not enough trend data" body="Log three focus days to draw a meaningful curve." icon={<TrendingUp size={48} />} />}
+          ) : <ChartEmpty title="Your first session starts the chart" body="Log a focus block to see your study time here." icon={<TrendingUp size={48} />} />}
         </ChartCard>
 
-        <ChartCard className="focus-radar-card" icon={<Target size={20} />} title="Focus Distribution" tone="purple">
-          {hasCategoryData ? (
-            <ResponsiveContainer width="100%" height="100%">
-	              <RadarChart data={dashboard.categoryData} outerRadius="58%" margin={{ top: 18, right: 34, bottom: 18, left: 34 }}>
-                <PolarGrid stroke={chartGridStroke} />
-                <PolarAngleAxis dataKey="subject" tick={chartAxisTickSmall} />
-                <PolarRadiusAxis tick={false} axisLine={false} domain={[0, "auto"]} />
-                <Radar dataKey="minutes" stroke="var(--accent)" strokeWidth={2} fill="var(--accent)" fillOpacity={0.5} style={{ filter: "none" }} />
-                <Tooltip contentStyle={chartTooltipStyle} itemStyle={chartTooltipItemStyle} labelStyle={chartTooltipLabelStyle} formatter={minuteTooltipFormatter} separator=" " />
-              </RadarChart>
-            </ResponsiveContainer>
-          ) : <ChartEmpty title="Distribution needs range" body="Study in three categories to unlock the radar." icon={<Target size={48} />} />}
+        <ChartCard className="focus-radar-card" icon={<Target size={20} />} title="Time by subject" tone="purple">
+          {hasCategoryData ? <div className="analytics-subject-list" aria-label="Focus time by subject">{dashboard.categoryData.map(item => <div className="analytics-subject-row" key={item.subject}><div><strong>{item.subject}</strong><span>{formatTime(item.minutes)} · {Math.round(item.minutes / Math.max(1, dashboard.totalMinutes) * 100)}%</span></div><div className="bar"><span style={{width:`${item.minutes / Math.max(1,dashboard.categoryData[0].minutes) * 100}%`}}/></div></div>)}</div> : <ChartEmpty title="Your subjects will appear here" body="Record a focus session in any subject to see its share of your time." icon={<Target size={48}/>}/>}
         </ChartCard>
 
-        <ChartCard className="hour-card" icon={<Clock size={20} />} title="Peak Productivity Hours" tone="blue">
+        <ChartCard className="hour-card" icon={<Clock size={20} />} title="Focus by session start hour" tone="blue">
           {hasHourlyData ? (
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={dashboard.hourlyData} margin={{ top: 8, right: 10, bottom: 0, left: 0 }}>
@@ -157,58 +132,11 @@ export function AnalyticsPage() {
                 </Bar>
               </BarChart>
             </ResponsiveContainer>
-          ) : <ChartEmpty title="No peak hour yet" body="Log three focus sessions and this becomes useful." icon={<Clock size={48} />} />}
+          ) : <ChartEmpty title="No focus sessions yet" body="Recorded minutes are grouped by the hour each session started." icon={<Clock size={48} />} />}
         </ChartCard>
       </section>
     </div>
   );
-}
-
-function buildDashboard(sessions: StudySession[], range: RangeKey, dailyGoal: number) {
-  const days = rangeDays[range];
-  const start = startOfDay(addDays(new Date(), -(days - 1)));
-  const previousStart = startOfDay(addDays(start, -days));
-  const previousEnd = addDays(start, -1);
-  const filtered = sessions.filter((session) => new Date(session.startTime) >= start);
-  const previous = sessions.filter((session) => {
-    const date = new Date(session.startTime);
-    return date >= previousStart && date <= endOfDay(previousEnd);
-  });
-
-  const totalsByDay = new Map<string, number>();
-  filtered.forEach((session) => totalsByDay.set(dateKey(session.startTime), (totalsByDay.get(dateKey(session.startTime)) ?? 0) + session.actualDuration));
-  const trendData: TrendPoint[] = Array.from({ length: days }, (_, index) => {
-    const date = addDays(start, index);
-    const key = dateKey(date);
-    return { date: date.toLocaleDateString(undefined, { month: "short", day: "numeric" }), fullDate: key, minutes: totalsByDay.get(key) ?? 0 };
-  });
-
-  const categories = Array.from(new Set([...defaultCategories, ...sessions.map((session) => session.category || "General")])).slice(0, 10);
-  const categoryTotals = new Map<string, number>();
-  filtered.forEach((session) => categoryTotals.set(session.category || "General", (categoryTotals.get(session.category || "General") ?? 0) + session.actualDuration));
-  const fullMark = Math.max(100, ...Array.from(categoryTotals.values()));
-  const categoryData: CategoryPoint[] = categories.map((subject) => ({ subject, minutes: categoryTotals.get(subject) ?? 0, fullMark }));
-
-  const hourlyTotals = new Array<number>(24).fill(0);
-  filtered.forEach((session) => {
-    hourlyTotals[new Date(session.startTime).getHours()] += session.actualDuration;
-  });
-  const hourlyData: HourPoint[] = hourlyTotals.map((minutes, hour) => ({ hour: formatHour(hour), minutes }));
-
-  const totalMinutes = filtered.reduce((sum, session) => sum + session.actualDuration, 0);
-  const previousMinutes = previous.reduce((sum, session) => sum + session.actualDuration, 0);
-  const delta = previousMinutes ? Math.round(((totalMinutes - previousMinutes) / previousMinutes) * 100) : 0;
-  const totalSessions = filtered.length;
-  const avgSessionLength = totalSessions ? Math.round(totalMinutes / totalSessions) : 0;
-  const cleanSessions = filtered.filter((session) => session.completed && !session.interrupted).length;
-  const completionRate = totalSessions ? Math.round((cleanSessions / totalSessions) * 100) : 0;
-  const activeDays = Array.from(totalsByDay.values()).filter((value) => value > 0).length;
-  const goalHits = Array.from(totalsByDay.values()).filter((value) => value >= dailyGoal).length;
-  const goalHitRate = activeDays ? Math.round((goalHits / activeDays) * 100) : 0;
-  const strongestCategory = categoryData.filter((item) => item.minutes > 0).sort((a, b) => b.minutes - a.minutes)[0];
-  const strongestHour = hourlyData.filter((item) => item.minutes > 0).sort((a, b) => b.minutes - a.minutes)[0];
-
-  return { trendData, categoryData, hourlyData, totalMinutes, previousMinutes, delta, totalSessions, avgSessionLength, cleanSessions, completionRate, activeDays, goalHits, goalHitRate, strongestCategory, strongestHour };
 }
 
 function KpiCard({ title, value, trend, icon, tone, trendDirection }: { title: string; value: React.ReactNode; trend: string; icon: React.ReactNode; tone: "accent" | "blue" | "purple" | "good", trendDirection?: "up" | "down" | "neutral" }) {
@@ -260,22 +188,3 @@ function formatTimeWithCountUp(mins: number) {
   const minutes = mins % 60;
   return minutes ? <><CountUp value={hours} />h <CountUp value={minutes} />m</> : <><CountUp value={hours} />h</>;
 }
-
-function formatHour(hour: number) {
-  if (hour === 0) return "12AM";
-  if (hour === 12) return "12PM";
-  return hour > 12 ? `${hour - 12}PM` : `${hour}AM`;
-}
-
-function startOfDay(date: Date) {
-  return new Date(date.getFullYear(), date.getMonth(), date.getDate());
-}
-
-function endOfDay(date: Date) {
-  return new Date(date.getFullYear(), date.getMonth(), date.getDate(), 23, 59, 59, 999);
-}
-
-function addDays(date: Date, count: number) {
-  return new Date(date.getFullYear(), date.getMonth(), date.getDate() + count);
-}
-

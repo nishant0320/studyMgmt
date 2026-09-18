@@ -1,3 +1,4 @@
+import { CategorySelect } from "./CategorySelect";
 import { useState } from 'react';
 import { Clock3, X } from 'lucide-react';
 import { Portal } from './Portal';
@@ -36,7 +37,7 @@ export function ManualSessionDialog({ onClose }: { onClose: () => void }) {
     <div className="two-col"><label>Study date<input autoFocus required type="date" max={dateKey(now)} value={date} onChange={e=>setDate(e.target.value)}/></label><label>Start time<input required type="time" value={time} onChange={e=>setTime(e.target.value)}/></label></div>
     <label>Minutes studied<input required type="number" min="1" max="720" step="1" value={duration} onChange={e=>setDuration(e.target.value)}/></label>
     <label>Link a task<Select aria-label="Link a task" value={taskId} onChange={e=>{setTaskId(e.target.value);const task=state.tasks.find(t=>t.id===e.target.value);if(task)setCategory(task.category);}}><option value="">No linked task</option>{state.tasks.map(task=><option key={task.id} value={task.id}>{task.title}</option>)}</Select></label>
-    <label>Subject or category<input required maxLength={100} value={category} onChange={e=>setCategory(e.target.value)}/></label>
+    <label>Subject or category<CategorySelect label="Subject or category" value={category} onChange={setCategory}/></label>
     <label>Study notes<textarea rows={3} maxLength={10000} placeholder="What did you work on?" value={notes} onChange={e=>setNotes(e.target.value)}/></label>
     <p className="form-help"><Clock3 size={16}/> Counts as one completed focus block. It will be marked “Manual” in your history.</p>
     {error && <p role="alert" className="form-error">{error}</p>}

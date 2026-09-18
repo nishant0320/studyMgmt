@@ -1,5 +1,6 @@
-import { Children, isValidElement, useEffect, useId, useLayoutEffect, useRef, useState, type ChangeEvent, type ReactNode, type SelectHTMLAttributes } from "react";
+import { Children, isValidElement, useEffect, useId, useRef, useState, type ChangeEvent, type ReactNode, type SelectHTMLAttributes } from "react";
 import { createPortal } from "react-dom";
+import { useDropdownPosition } from "../hooks/useDropdownPosition";
 import { Check, ChevronDown } from "lucide-react";
 
 type Props = Omit<SelectHTMLAttributes<HTMLSelectElement>, 'multiple' | 'size' | 'onChange'> & {
@@ -20,7 +21,7 @@ export function Select({ value, defaultValue, onChange, children, disabled, clas
   const selectedIndex = options.findIndex(option => option.value === selected);
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState(Math.max(0, selectedIndex));
-  const [position, setPosition] = useState({ left: 0, top: 0, width: 0, maxHeight: 260 });
+  const position = useDropdownPosition(open, trigger, list, options.length, 180, () => setOpen(false));
   const typeahead = useRef({ text: '', at: 0 });
   const choose = (index: number) => {
     const option = options[index];
@@ -28,26 +29,13 @@ export function Select({ value, defaultValue, onChange, children, disabled, clas
     setInternal(option.value);
     onChange?.({ target: { value: option.value }, currentTarget: { value: option.value } } as ChangeEvent<HTMLSelectElement>);
     setOpen(false);
-    trigger.current?.focus();
+    trigger.current?.focus({ preventScroll: true });
   };
-  useLayoutEffect(() => {
-    if (!open || !trigger.current) return;
-    const rect = trigger.current.getBoundingClientRect();
-    const width = Math.min(Math.max(rect.width, 170), window.innerWidth - 24);
-    const below = window.innerHeight - rect.bottom - 16;
-    const above = rect.top - 16;
-    const upward = below < 180 && above > below;
-    const height = Math.min(280, Math.max(96, upward ? above : below), options.length * 38 + 10);
-    setPosition({ left: Math.max(12, Math.min(rect.left, window.innerWidth - width - 12)), top: upward ? rect.top - height - 6 : rect.bottom + 6, width, maxHeight: height });
-  }, [open, options.length]);
   useEffect(() => {
     if (!open) return;
     const outside = (event: PointerEvent) => { if (!trigger.current?.contains(event.target as Node) && !list.current?.contains(event.target as Node)) setOpen(false); };
-    const reposition = (event: Event) => { if (!list.current?.contains(event.target as Node)) setOpen(false); };
     document.addEventListener('pointerdown', outside);
-    window.addEventListener('resize', reposition);
-    window.addEventListener('scroll', reposition, true);
-    return () => { document.removeEventListener('pointerdown', outside); window.removeEventListener('resize', reposition); window.removeEventListener('scroll', reposition, true); };
+    return () => { document.removeEventListener('pointerdown', outside); };
   }, [open]);
   useEffect(() => { if (open) list.current?.querySelector<HTMLElement>(`[data-index="${active}"]`)?.scrollIntoView({ block: 'nearest' }); }, [active, open]);
   const move = (direction: number) => {
@@ -68,7 +56,7 @@ export function Select({ value, defaultValue, onChange, children, disabled, clas
           if (event.key === 'ArrowDown') move(1);
           else if (event.key === 'ArrowUp') move(-1);
           else if (event.key === 'Home') setActive(options.findIndex(option => !option.disabled));
-          else if (event.key === 'End') setActive(options.length - 1);
+          else if (event.key === 'End') setActive(options.reduce((last, option, index) => option.disabled ? last : index, -1));
           else choose(active);
         } else if (event.key.length === 1 && !event.ctrlKey && !event.metaKey) {
           const text = Date.now() - typeahead.current.at < 700 ? typeahead.current.text + event.key.toLowerCase() : event.key.toLowerCase();

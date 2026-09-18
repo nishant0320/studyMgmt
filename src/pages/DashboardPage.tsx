@@ -2,7 +2,8 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { ArrowDownLeft, ArrowRight, BookOpen, CalendarDays, Check, CheckCircle2, Clock3, Flame, Plus, Play, Target, TrendingUp } from "lucide-react";
 import { useAppStore } from "../store/AppStore";
-import { currentStreak, todayStats, dateKey, dayMinutesMap, currentWeekDailyBreakdown } from "../utils/stats";
+import { currentStreak, todayStats, dateKey, currentWeekDailyBreakdown } from "../utils/stats";
+import { StudyHeatmap } from "../components/StudyHeatmap";
 import { ProgressRing } from "../components/ProgressRing";
 import { formatTimerClock, useActiveTimer } from "../components/ActiveTimerProvider";
 
@@ -18,18 +19,11 @@ export function DashboardPage() {
   const goal = state.settings.dailyGoalMinutes;
   const progress = Math.min(1, today.minutesToday / Math.max(1, goal));
   const activeTasks = state.tasks.filter(t => t.status !== "done");
-  const tasks = state.tasks.filter(t => taskFilter === "Completed" ? t.status === "done" : t.status !== "done" && (taskFilter !== "Today" || t.dueDate === todayKey))
+  const tasks = state.tasks.filter(t => taskFilter === "Completed" ? t.status === "done" : t.status !== "done" && (taskFilter !== "Today" || t.plannedDate === todayKey))
     .sort((a, b) => (a.dueDate || "9999").localeCompare(b.dueDate || "9999")).slice(0, 4);
   const week = currentWeekDailyBreakdown(state);
   const weekMinutes = week.reduce((sum, d) => sum + d.minutes, 0);
   const maxMinutes = Math.max(goal, ...week.map(d => d.minutes), 1);
-  const map = dayMinutesMap(state.sessions);
-  const days = Array.from({ length: 84 }, (_, i) => {
-    const date = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 83 + i);
-    const key = dateKey(date);
-    const mins = map[key] || 0;
-    return { key, mins, level: mins === 0 ? 0 : Math.min(4, Math.ceil(mins / Math.max(1, goal) * 3)) };
-  });
   const sessions = [...state.sessions].filter(s => s.type === "focus").sort((a, b) => b.startTime.localeCompare(a.startTime)).slice(0, 3);
   const greeting = now.getHours() < 12 ? "Good morning" : now.getHours() < 17 ? "Good afternoon" : "Good evening";
   const focus = () => { if (!timer.running) timer.start(); navigate("/timer"); };
@@ -66,13 +60,13 @@ export function DashboardPage() {
           </section>
           <section className="overview-card">
             <div className="overview-card-heading"><div><h2>Your study plan <span className="count-badge">{activeTasks.length}</span></h2><p>Clear your mind. Give every task a place.</p></div><button className="text-action" onClick={() => navigate("/tasks?new=1")}><Plus size={15} /> Add task</button></div>
-            <div className="plan-tabs">{["Upcoming", "Today", "Completed"].map(filter => <button key={filter} className={filter === taskFilter ? "selected" : ""} onClick={() => setTaskFilter(filter)}>{filter}</button>)}<button className="view-all" onClick={() => navigate("/tasks")}>View all <ArrowRight size={14} /></button></div>
-            <div className="plan-list">{tasks.length ? tasks.map(task => <div className="plan-row" key={task.id}><button className={`task-check ${task.status === "done" ? "checked" : ""}`} aria-label={`${task.status === "done" ? "Reopen" : "Complete"} ${task.title}`} onClick={() => dispatch({ type: "move-task", id: task.id, status: task.status === "done" ? "todo" : "done" })}>{task.status === "done" && <Check size={13} />}</button><button className="plan-task" onClick={() => navigate("/tasks")}><strong>{task.title}</strong><span>{task.category} <span>·</span> {task.dueDate ? task.dueDate < todayKey ? "Overdue" : task.dueDate === todayKey ? "Today" : new Date(`${task.dueDate}T12:00:00`).toLocaleDateString([], { month: "short", day: "numeric" }) : "No deadline"}</span></button><span className={`plan-priority ${task.priority}`}>{task.priority}</span></div>) : <div className="overview-empty"><CheckCircle2 size={24} /><strong>{taskFilter === "Completed" ? "Your wins will live here" : "A little room to breathe"}</strong><p>{taskFilter === "Completed" ? "Complete a task to see it here." : "No tasks in this view. Plan your next small step."}</p><button className="text-action" onClick={() => navigate("/tasks?new=1")}>Create a task <ArrowRight size={14} /></button></div>}</div>
+            <div className="plan-tabs">{["Upcoming", "Today", "Completed"].map(filter => <button key={filter} className={filter === taskFilter ? "selected" : ""} onClick={() => setTaskFilter(filter)}>{filter}</button>)}<button className="view-all" onClick={() => navigate(taskFilter === "Today" ? `/tasks?date=${todayKey}` : "/tasks?scope=all")}>View all <ArrowRight size={14} /></button></div>
+            <div className="plan-list">{tasks.length ? tasks.map(task => <div className="plan-row" key={task.id}><button className={`task-check ${task.status === "done" ? "checked" : ""}`} aria-label={`${task.status === "done" ? "Reopen" : "Complete"} ${task.title}`} onClick={() => dispatch({ type: "move-task", id: task.id, status: task.status === "done" ? "todo" : "done" })}>{task.status === "done" && <Check size={13} />}</button><button className="plan-task" onClick={() => navigate(`/tasks?task=${encodeURIComponent(task.id)}`)}><strong>{task.title}</strong><span>{task.category} <span>·</span> {task.dueDate ? task.dueDate < todayKey ? "Overdue" : task.dueDate === todayKey ? "Today" : new Date(`${task.dueDate}T12:00:00`).toLocaleDateString([], { month: "short", day: "numeric" }) : "No deadline"}</span></button><span className={`plan-priority ${task.priority}`}>{task.priority}</span></div>) : <div className="overview-empty"><CheckCircle2 size={24} /><strong>{taskFilter === "Completed" ? "Your wins will live here" : "A little room to breathe"}</strong><p>{taskFilter === "Completed" ? "Complete a task to see it here." : "No tasks in this view. Plan your next small step."}</p><button className="text-action" onClick={() => navigate("/tasks?new=1")}>Create a task <ArrowRight size={14} /></button></div>}</div>
           </section>
         </div>
         <aside className="overview-side">
-          <section className="overview-card daily-card"><div className="overview-card-heading"><h2>Daily goal</h2><Target size={18} /></div><ProgressRing progress={progress} size={172} strokeWidth={10} colorFrom="#c5dfa9" colorTo="#91b77b" trackColor="#303d2b"><div className="goal-label"><strong>{Math.round(progress * 100)}<small>%</small></strong><span>of your daily goal</span></div></ProgressRing><p><strong>{today.minutesToday} min</strong> <span>/ {goal} min</span></p><div className="goal-message">{progress >= 1 ? "Goal reached. Take a moment to celebrate." : `${Math.max(0, goal - today.minutesToday)} more minutes. You can do this.`}</div><button className="text-action" onClick={() => navigate("/settings")}>Adjust goal <ArrowRight size={14} /></button></section>
-          <section className="overview-card consistency-card"><div className="overview-card-heading"><h2>Build your rhythm</h2><Flame size={18} /></div><p>Every focused day makes a difference.</p><div className="rhythm-grid">{days.map(d => <div key={d.key} className={`rhythm-cell level-${d.level}`} title={`${d.key}: ${d.mins} minutes`} />)}</div><div className="rhythm-legend"><span>Last 12 weeks</span><span>Less {[0, 1, 2, 3, 4].map(n => <i className={`rhythm-cell level-${n}`} key={n} />)} More</span></div></section>
+          <section className="overview-card daily-card"><div className="overview-card-heading"><h2>Daily goal</h2><Target size={18} /></div><ProgressRing progress={progress} size={172} strokeWidth={10} colorFrom="#c5dfa9" colorTo="#91b77b" trackColor="#303d2b"><div className="goal-label"><strong>{Math.round(progress * 100)}<small>%</small></strong><span>of your daily goal</span></div></ProgressRing><p><strong>{today.minutesToday} min</strong> <span>/ {goal} min</span></p><div className="goal-message">{progress >= 1 ? "Goal reached. Take a moment to celebrate." : `${Math.max(0, goal - today.minutesToday)} more minutes. You can do this.`}</div><button className="text-action" onClick={() => navigate("/settings#settings-goals")}>Adjust goal <ArrowRight size={14} /></button></section>
+          <StudyHeatmap sessions={state.sessions} dailyGoal={goal} compact />
           <section className="overview-card recent-card"><div className="overview-card-heading"><h2>Recent sessions</h2><button className="text-action" aria-label="View session history" onClick={() => navigate("/history")}><ArrowRight size={16} /></button></div>{sessions.length ? sessions.map(s => <div className="recent-row" key={s.id}><i><ArrowDownLeft size={17} /></i><div><strong>{s.category}</strong><span>{dateKey(s.startTime) === todayKey ? "Today" : new Date(s.startTime).toLocaleDateString([], { month: "short", day: "numeric" })} · {s.completed && !s.interrupted ? "Completed" : "Interrupted"}</span></div><b>{s.actualDuration}<small> min</small></b></div>) : <p className="recent-empty">Your first session is the start of your story. Ready when you are.</p>}</section>
           <button className="reflection-link" onClick={() => navigate("/journal")}><i><BookOpen size={20} /></i><span><strong>A moment to reflect</strong><small>What went well today?</small></span><ArrowRight size={17} /></button>
         </aside>
